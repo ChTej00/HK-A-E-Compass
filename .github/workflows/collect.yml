@@ -14,6 +14,7 @@ on:
     inputs:
       days_back:
         description: "How many days back to check for missing snapshots (400 = full history)"
+        type: string
         default: "3"
 
 permissions:
