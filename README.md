@@ -1,4 +1,4 @@
-# A&E Compass HK
+# A&E Compass HK.
 
 **Where in Hong Kong would a non-urgent patient be seen soonest?** The nearest public A&E is often not the
 fastest. This project combines A&E waiting-time data, a forecasting model and travel times to estimate
