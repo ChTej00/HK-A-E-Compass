@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aecompass"
+version = "0.1.0"
+description = "A&E Compass HK: forecasts Hong Kong A&E waits and recommends where you'd be seen soonest. Not an official HA service."
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
