@@ -8,9 +8,9 @@ inspected. Anything not checked is listed as such.
 | Item | Status | Detail |
 |---|---|---|
 | Live JSON `https://www.ha.org.hk/opendata/aed/aedwtdata2-en.json` | **Not reachable from the dev machine** | Connection reset (curl, in-app browser, cloud fetcher). Content verified through the archive copy below. `-tc`, `-sc` and `.xlsx` variants are listed on data.gov.hk but untested for the same reason. |
-| Archive API `https://api.data.gov.hk/v1/historical-archive` | Verified | `list-file-versions?url=…&start=YYYYMMDD&end=YYYYMMDD` (end must be yesterday or earlier) and `get-file?url=…&time=YYYYMMDD-HHMM` (works for today; 404 when no snapshot). |
-| Update frequency | Verified | One snapshot per 15 minutes: 94–96 per day. The 05:30 slot was available at 05:30 HKT. |
-| History depth | Verified | Numeric feed from **14 Oct 2025**: 36,751 snapshots to 13 Nov 2026, about 139 MB raw. |
+| Archive API `https://api.data.gov.hk/v1/historical-archive` | Verified | `get-file?url=…&time=YYYYMMDD-HHMM` (works for today; 404 when no snapshot). `list-file-versions?url=…&start=YYYYMMDD&end=YYYYMMDD` exists but is **incomplete**: it listed zero snapshots for ten days whose files exist (DECISIONS.md D12). |
+| Update frequency | Verified | One snapshot per 15 minutes. The 05:30 slot was available at 05:30 HKT. In about 1% of slots the feed repeats the previous update instead of refreshing. |
+| History depth | Verified | Numeric feed from **14 Oct 2025**: 38,022 snapshots to 14 Nov 2026 (99.94% of slots), about 145 MB raw. |
 | Data spec PDF | **Not read** | Hosted on ha.org.hk. Field meanings below come from the brief and the data itself. |
 | Hospital coordinates | Verified | CSDI FeatureServer `https://portal.csdi.gov.hk/server/rest/services/common/fhb_rcd_1636947932221_94410/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=json` returns `hospName_EN/TC/SC`, `LATITUDE`, `LONGITUDE`. |
 
@@ -31,11 +31,15 @@ Things the cleaner must handle:
 
 - Every value is a **string with its unit**. `t3*` are minutes; `t45*` are hours in 0.5 steps.
 - Singular and plural both occur: `"1 hour"`, `"4 hour"`, `"2.5 hours"`, `"0 minute"`.
-- `manageT1case` / `manageT2case` (`Y`/`N`) are **not in the brief**. Likely "currently managing a triage I / II
-  case", i.e. the resuscitation flag. Meaning to be confirmed against the spec PDF.
+- `manageT1case` / `manageT2case` (`Y`/`N`/`N/A`) are **not in the brief**. Likely "currently managing a
+  triage I / II case". Meaning to be confirmed against the spec PDF.
+- `t1wt` / `t2wt` take only two forms in the data: the normal pair (`"0 minute"`, `"less than 15 minutes"`) or,
+  in about 2.7% of rows, `"Managing multiple resuscitation cases"` in both, with both flags `"N/A"`.
+  The triage III and IV/V waits are still published in those rows.
 - `updateTime` is `D/M/YYYY h:mmAM|PM` in Hong Kong time, and ran 15 minutes behind the archive slot in
   the samples seen (slot 23:00 → 10:45PM).
-- Not yet seen but expected: non-numeric values (e.g. "N/A") during outages. To be counted in M1.
+- Non-numeric waits (e.g. "N/A") were expected but none have been found. The current counts are in
+  `evals/reports/data_quality.md`.
 
 ### Earlier formats (not used; see DECISIONS.md D2)
 

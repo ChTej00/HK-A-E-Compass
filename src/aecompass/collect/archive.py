@@ -3,8 +3,8 @@
 data.gov.hk saves a copy of selected open-data files every time they change. For the A&E waiting-time
 file that means one snapshot every 15 minutes. Two endpoints matter:
 
-- list-file-versions: which snapshot timestamps exist between two dates (only up to *yesterday*)
 - get-file: download the snapshot for one exact timestamp (works for today too; 404 if it doesn't exist)
+- list-file-versions: which timestamps exist between two dates. Found to be incomplete, so not relied on.
 
 Timestamps are Hong Kong time, formatted "YYYYMMDD-HHMM", e.g. "20261114-0530".
 """
@@ -62,7 +62,11 @@ def _get(client: httpx.Client, path: str, params: dict, attempts: int = 5) -> ht
 
 
 def list_versions(client: httpx.Client, url: str, day: date) -> list[str]:
-    """Snapshot timestamps that exist for one past day. The API rejects today and future dates."""
+    """Snapshot timestamps the archive *lists* for one past day. The API rejects today and future dates.
+
+    For diagnostics only. The listing can be empty for days whose files exist, so the collector does not
+    rely on it; it requests every slot with get_file instead.
+    """
     d = day.strftime("%Y%m%d")
     r = _get(client, "list-file-versions", {"url": url, "start": d, "end": d})
     r.raise_for_status()

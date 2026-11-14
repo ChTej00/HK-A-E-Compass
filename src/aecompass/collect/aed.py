@@ -16,8 +16,6 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
-import httpx
-
 from . import archive
 from .store import RawStore
 
@@ -34,11 +32,14 @@ def looks_valid(body: str) -> bool:
     return isinstance(data, dict) and isinstance(data.get("waitTime"), list) and len(data["waitTime"]) > 0
 
 
-def wanted_timestamps(client: httpx.Client, day: date, today: date) -> list[str]:
-    """Past days: ask the archive what exists. Today: the listing isn't available yet, so try every slot so far."""
-    if day < today:
-        return archive.list_versions(client, archive.AED_URL, day)
-    return archive.slots_for_day(day, until=archive.now_hkt())
+def wanted_timestamps(day: date, today: date) -> list[str]:
+    """Every 15-minute slot of the day (for today, only the slots so far).
+
+    We ask for each slot directly and treat a 404 as "not in the archive". The archive also has a listing
+    endpoint, but it is not trusted: it reported zero snapshots for ten whole days in Oct-Nov 2026 whose
+    files were all there (see DECISIONS.md D12).
+    """
+    return archive.slots_for_day(day, until=archive.now_hkt() if day == today else None)
 
 
 def collect(start: date, end: date, store: RawStore, workers: int = 4, verbose: bool = True) -> dict:
@@ -53,7 +54,7 @@ def collect(start: date, end: date, store: RawStore, workers: int = 4, verbose: 
 
         day = start
         while day <= end:
-            wanted = wanted_timestamps(client, day, today)
+            wanted = wanted_timestamps(day, today)
             missing = [ts for ts in wanted if not store.has(ts)]
             totals["already_had"] += len(wanted) - len(missing)
             stored = 0
