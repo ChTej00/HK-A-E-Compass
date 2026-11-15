@@ -1,11 +1,14 @@
 import numpy as np
 import pandas as pd
 
-from aecompass.forecast.features import build_features, feature_columns
+from aecompass.forecast.features import (
+    NEIGHBOUR_FEATURES, STEP_FEATURES, build_features, feature_columns, step_features,
+)
 from aecompass.forecast.model import apply_interval, conformal_offsets
 
 TZ = "Asia/Hong_Kong"
 COLS = ["t3_p50_min", "t3_p95_min", "t45_p50_min", "t45_p95_min"]
+NEIGHBOURS = {"A": ["B", "C"], "B": ["C", "A"], "C": ["A", "B"]}
 
 
 def make_clean(days: int = 40, seed: int = 0) -> pd.DataFrame:
@@ -46,9 +49,10 @@ def test_no_feature_changes_when_the_future_changes():
 
     for target in ("t45_p50_min", "t3_p50_min"):
         for h in (1, 3):
-            a = build_features(clean, target, h, weather=weather)
-            b = build_features(tampered, target, h, weather=weather_tampered)
+            a = build_features(clean, target, h, weather=weather, neighbours=NEIGHBOURS)
+            b = build_features(tampered, target, h, weather=weather_tampered, neighbours=NEIGHBOURS)
             feats = [c for c in feature_columns(a) if c != "hospital"]
+            assert {"slots_at_level", "nearest_now"} <= set(feats)
             a = a[a["origin"] <= cut].set_index(["origin", "hospital"])[feats]
             b = b[b["origin"] <= cut].set_index(["origin", "hospital"])[feats]
             b = b.loc[a.index]
@@ -86,3 +90,23 @@ def test_conformal_interval_covers_about_the_requested_share():
     lo, hi = apply_interval(fresh, offsets)
     assert abs(((actual >= lo) & (actual <= hi)).mean() - 0.8) < 0.02
     assert (lo >= 0).all()
+
+
+def test_step_features_count_slots_since_the_last_change():
+    idx = pd.date_range("2026-01-05", periods=8, freq="15min", tz=TZ)
+    p = pd.DataFrame({"A": [60.0, 60, 90, 90, 90, 60, np.nan, 60]}, index=idx)
+    f = step_features(p)
+    assert f["slots_at_level"]["A"].tolist()[:6] == [0, 1, 0, 1, 2, 0]  # the first slot has no history, so it starts at 0
+    assert np.isnan(f["slots_at_level"]["A"].iloc[6]) and f["slots_at_level"]["A"].iloc[7] == 0  # a gap restarts the count
+    assert f["last_step_size"]["A"].tolist()[2:6] == [30, 30, 30, -30]
+    assert f["slots_since_step_up"]["A"].tolist()[2:6] == [0, 1, 2, 3]
+
+
+def test_neighbour_features_use_the_listed_hospitals():
+    table = build_features(make_clean(), "t45_p50_min", 1, neighbours=NEIGHBOURS)
+    a = table[table["hospital"] == "A"].set_index("origin")
+    b = table[table["hospital"] == "B"].set_index("origin")
+    shared = a.index.intersection(b.index)
+    assert np.allclose(a.loc[shared, "nearest_now"], b.loc[shared, "y_now"])
+    assert not set(NEIGHBOUR_FEATURES) & set(feature_columns(table, use_neighbours=False))
+    assert not set(STEP_FEATURES) & set(feature_columns(table, use_steps=False))

@@ -274,6 +274,31 @@ collected for a later test. This supersedes the modelling half of D5.
 
 ---
 
+## D17. Step-pattern and neighbouring-hospital features were tested and rejected (15 Nov 2026)
+
+**What.** Two extra feature groups were tried on the non-urgent target and neither is in the shipped model:
+five "step" features (how long the published number has held its level, last jump, time since it last rose
+or fell, changes in the past 3 hours) and five "neighbour" features (the three closest other A&Es by
+straight-line distance: their waits now and their 1-hour change).
+
+**Why.** Both made the error very slightly worse, by 0.1% to 0.2% at every horizon, on the 20 development
+blocks and again on the 4 held-back blocks (`evals/reports/feature_experiment.md`). The rule was written
+into the script before the run: adopt only if better at all three horizons on both sets. Likely reasons:
+the published wait changes in about half of all 15-minute slots, so there is little "holding a level" to
+exploit, and the model already sees the city-wide mean and each hospital's gap to it, which carries most of
+what neighbours would add.
+
+**Alternatives.** Keep them anyway (more features with no measured gain is harder to defend); pick
+neighbours by travel time or by learned correlation instead of straight-line distance (not tried; a learned
+choice would have to be fitted inside each training window to avoid leakage).
+
+**Caveats.** The held-back blocks had already been scored once for the M2 headline, so they were unseen by
+this experiment only. The feature code stays in `features.py`, switched off, so the result is reproducible.
+
+**Also fixed.** The "What the model uses" table in `forecast.md` had been computed from the last variant
+trained (the 120-day ablation) instead of the shipped model. It now refits the shipped model explicitly.
+The ranking changed slightly; no error or coverage number changed.
+
 ## Known issues to carry forward
 
 - **Fee change inside the training window.** The A&E charge rose from $180 to $400 on 1 Jan 2026 (triage I

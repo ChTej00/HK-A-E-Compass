@@ -8,7 +8,7 @@ patient waits. Errors are mean absolute error (MAE) in **minutes**; lower is bet
 - Test period: 09 Dec 2025 to 09 Nov 2026, 24 two-week blocks, 18 hospitals.
 - For each block the model is trained only on forecasts whose answer was already known before the block started, then scored on the block. Baselines and model are scored on identical rows.
 - One LightGBM model per target and horizon, shared across hospitals, no weather features. Fixed hyperparameters, not tuned on these test blocks. Trained on forecasts made on the hour and half hour; tested on all.
-- Run time: 20 minutes.
+- Report rebuilt from the saved forecasts (`--report-only`); the models were not retrained.
 
 ## `t45_p50_min`: Triage IV & V (semi-/non-urgent), median wait
 
@@ -74,17 +74,17 @@ Share of total split gain, non-urgent target at +2h, model from the last block. 
 
 | feature | share of gain |
 |---|---|
-| target_hour | 14.0% |
-| hospital | 10.4% |
-| now_vs_city | 7.8% |
-| target_hour_sin | 7.3% |
-| now_vs_mean_24h | 6.6% |
-| move_same_window_last_week | 6.1% |
-| y_now | 6.0% |
-| move_same_window_yesterday | 5.5% |
+| target_hour | 15.5% |
+| target_hour_sin | 10.2% |
+| hospital | 10.0% |
+| y_now | 9.2% |
+| now_vs_city | 8.3% |
+| now_vs_mean_24h | 7.0% |
 | target_time_mean_4w | 5.4% |
-| target_hour_cos | 2.9% |
-| t45_p95_min_now | 2.9% |
-| mean_3h | 2.8% |
+| move_same_window_last_week | 5.2% |
+| move_same_window_yesterday | 4.9% |
+| target_hour_cos | 3.5% |
+| t45_p95_min_now | 3.4% |
+| now_vs_usual_now | 2.4% |
 
 Per-block and per-hospital numbers: `forecast_by_fold.csv`, `forecast_by_hospital.csv`.

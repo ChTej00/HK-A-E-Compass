@@ -36,6 +36,8 @@ Source: [`evals/reports/forecast.md`](evals/reports/forecast.md).
   They are wide: about ±45 minutes at +1h and ±62 minutes at +3h.
 - For the triage III (urgent) median wait the model is 8–12% better than the best baseline.
 - Weather features did not help and were removed. Details and ablations are in the report.
+- Step-pattern and neighbouring-hospital features were also tested and rejected: both were 0.1% to 0.2%
+  worse ([`evals/reports/feature_experiment.md`](evals/reports/feature_experiment.md)).
 
 ![Forecast error by method](evals/reports/figures/forecast_mae_by_horizon.png)
 

@@ -2,6 +2,7 @@
 
     python evals/run_forecast.py                 # main run (about 15 minutes)
     python evals/run_forecast.py --ablations     # also run the ablations on the non-urgent target
+    python evals/run_forecast.py --report-only   # rebuild the report from the saved forecasts, no training
 
 Writes  data/eval/forecast_preds.parquet         every out-of-sample forecast (used later by the regret eval)
         evals/reports/forecast.md                generated summary; never hand-edited
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
@@ -26,7 +28,7 @@ from aecompass.forecast.baselines import BASELINES, fold_predictions
 from aecompass.forecast.dataset import HORIZONS_H, TARGETS, load_clean, to_panel
 from aecompass.forecast.features import build_features, feature_columns
 from aecompass.forecast.splits import walk_forward_folds
-from aecompass.ref import holidays, weather
+from aecompass.ref import holidays, hospitals, weather
 
 REPORTS = Path("evals/reports")
 FIGS = REPORTS / "figures"
@@ -35,9 +37,21 @@ INITIAL_TRAIN_DAYS, TEST_DAYS = 56, 14
 COVERAGE = 0.8
 MAIN_TARGET = "t45_p50_min"
 
-# name -> (use weather features?, training window in days or None for "everything so far")
-VARIANTS = {"model": (False, None)}  # the model that ships: no weather features (see the ablation)
-ABLATIONS = {"model_with_weather": (True, None), "model_last_120d": (False, 120)}
+
+
+@dataclass(frozen=True)
+class Variant:
+    """One way of training the model: which optional feature groups it sees and how much history."""
+
+    weather: bool = False
+    steps: bool = False
+    neighbours: bool = False
+    window_days: int | None = None  # None = everything so far
+    params: dict | None = None  # None = the fixed hyperparameters in model.py
+
+
+VARIANTS = {"model": Variant()}  # the model that ships
+ABLATIONS = {"model_with_weather": Variant(weather=True), "model_last_120d": Variant(window_days=120)}
 
 SURFACE, INK, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7"
 SERIES = {  # colour follows the method everywhere it appears
@@ -56,31 +70,35 @@ plt.rcParams.update(
 )
 
 
-def run_target(df, target, variants, weather_df, holiday_map, log) -> pd.DataFrame:
+def run_target(df, target, variants, weather_df, holiday_map, log, neighbours=None, first_fold=1) -> pd.DataFrame:
     """All out-of-sample predictions for one target: baselines plus one column per model variant."""
     panel = to_panel(df, target)
-    folds = walk_forward_folds(panel.index, INITIAL_TRAIN_DAYS, TEST_DAYS)
+    folds = [f for f in walk_forward_folds(panel.index, INITIAL_TRAIN_DAYS, TEST_DAYS) if f.number >= first_fold]
     out = []
     for h in HORIZONS_H:
-        table = build_features(df, target, h, weather_df, holiday_map)
+        table = build_features(df, target, h, weather_df, holiday_map, neighbours)
         horizon = pd.Timedelta(hours=h)
         for fold in folds:
             preds = fold_predictions(panel, fold, h)  # baselines; defines the rows everything is scored on
             test = table[(table["origin"] >= fold.test_start) & (table["origin"] < fold.test_end)]
-            for name, (use_weather, window_days) in variants.items():
+            for name, v in variants.items():
                 # A training row's answer lies at origin + h. It must be known before the test block starts.
                 train = table[table["origin"] + horizon < fold.test_start]
-                if window_days:
-                    train = train[train["origin"] >= fold.test_start - pd.Timedelta(days=window_days)]
+                if v.window_days:
+                    train = train[train["origin"] >= fold.test_start - pd.Timedelta(days=v.window_days)]
                 train = train[train["origin"].dt.minute % 30 == 0]  # neighbours 15 min apart are near-duplicates
-                feats = feature_columns(table, use_weather)
+                feats = feature_columns(table, v.weather, v.steps, v.neighbours)
                 t0 = time.time()
-                fitted = M.fit(train, feats)
+                fitted = M.fit(train, feats, v.params)
                 scored = test[["origin", "hospital"]].assign(**{name: M.predict(fitted, test, feats)})
                 preds = preds.merge(scored, on=["origin", "hospital"], how="inner")
                 log(f"{target} +{h}h fold {fold.number:2d} {name}: {len(train):,} train rows, {time.time() - t0:.0f}s")
             out.append(preds)
-        if target == MAIN_TARGET and h == 2:
+        if target == MAIN_TARGET and h == 2 and "model" in variants:
+            # refit the shipped variant on the last block's training rows, so this never depends on loop order
+            feats = feature_columns(table, variants["model"].weather, variants["model"].steps, variants["model"].neighbours)
+            train = table[(table["origin"] + horizon < folds[-1].test_start) & (table["origin"].dt.minute % 30 == 0)]
+            fitted = M.fit(train, feats, variants["model"].params)
             importance = pd.Series(fitted.booster_.feature_importance("gain"), index=feats)
             (importance / importance.sum()).sort_values(ascending=False).round(4).to_csv(
                 REPORTS / "forecast_feature_importance.csv", header=["share_of_gain"]
@@ -164,7 +182,7 @@ def figures(preds: pd.DataFrame) -> list[str]:
     return ["figures/forecast_mae_by_horizon.png", "figures/forecast_mae_by_fold.png"]
 
 
-def report(preds: pd.DataFrame, ablations: bool, minutes: float) -> str:
+def report(preds: pd.DataFrame, ablations: bool, minutes: float | None) -> str:
     figs = figures(preds)
     cols = [*BASELINES, "model"]
     out = [
@@ -181,7 +199,8 @@ def report(preds: pd.DataFrame, ablations: bool, minutes: float) -> str:
         "block started, then scored on the block. Baselines and model are scored on identical rows.",
         "- One LightGBM model per target and horizon, shared across hospitals, no weather features. Fixed hyperparameters, "
         "not tuned on these test blocks. Trained on forecasts made on the hour and half hour; tested on all.",
-        f"- Run time: {minutes:.0f} minutes.",
+        f"- Run time: {minutes:.0f} minutes." if minutes is not None
+        else "- Report rebuilt from the saved forecasts (`--report-only`); the models were not retrained.",
         "",
     ]
     by_fold_all, by_hosp_all = [], []
@@ -278,17 +297,25 @@ def report(preds: pd.DataFrame, ablations: bool, minutes: float) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ablations", action="store_true")
+    parser.add_argument("--report-only", action="store_true")
     args = parser.parse_args()
 
     REPORTS.mkdir(parents=True, exist_ok=True)
+    if args.report_only:
+        preds = pd.read_parquet(PREDS_PATH)
+        text = report(preds, all(name in preds.columns for name in ABLATIONS), None)
+        (REPORTS / "forecast.md").write_text(text, encoding="utf-8")
+        print(text)
+        return
     started = time.time()
     df, weather_df, holiday_map = load_clean(), weather.load(), holidays.load()
+    neighbours = hospitals.nearest(hospitals.load(), k=3)
     log = lambda message: print(f"[{(time.time() - started) / 60:5.1f} min] {message}", flush=True)
 
     parts = []
     for target in TARGETS:
         variants = VARIANTS | (ABLATIONS if args.ablations and target == MAIN_TARGET else {})
-        parts.append(run_target(df, target, variants, weather_df, holiday_map, log))
+        parts.append(run_target(df, target, variants, weather_df, holiday_map, log, neighbours))
     preds = add_intervals(pd.concat(parts, ignore_index=True))
 
     PREDS_PATH.parent.mkdir(parents=True, exist_ok=True)

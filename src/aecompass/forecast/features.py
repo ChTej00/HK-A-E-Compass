@@ -22,6 +22,12 @@ STEPS_PER_DAY = 24 * STEPS_PER_HOUR
 OTHER_SERIES = ["t3_p50_min", "t3_p95_min", "t45_p50_min", "t45_p95_min"]
 WEATHER_FEATURES = ["temp_c", "rain_mm", "rain_3h_mm", "humidity_pct"]
 CATEGORICAL = ["hospital"]
+# Optional feature groups, switched on per model variant (see evals/run_feature_experiment.py).
+STEP_FEATURES = ["slots_at_level", "last_step_size", "slots_since_step_up", "slots_since_step_down", "changes_3h"]
+NEIGHBOUR_FEATURES = [
+    "nearest_now", "nearest_change_1h", "neighbours_mean_now", "neighbours_change_1h", "now_vs_neighbours",
+]
+RUN_CAP = 96  # "how long has it been like this" is capped at one day
 
 
 def _broadcast(series: pd.Series, like: pd.DataFrame) -> pd.DataFrame:
@@ -42,12 +48,63 @@ def _mean_of(frames: list[pd.DataFrame], min_count: int) -> pd.DataFrame:
     return pd.DataFrame(mean, index=frames[0].index, columns=frames[0].columns)
 
 
+def _slots_since(event: pd.DataFrame) -> pd.DataFrame:
+    """For each cell, how many slots ago `event` was last True (0 = now). NaN before the first event."""
+    position = pd.DataFrame(
+        np.repeat(np.arange(len(event), dtype="float64")[:, None], event.shape[1], axis=1),
+        index=event.index, columns=event.columns,
+    )
+    last = position.where(event).ffill()  # ffill carries the past forward, never the future back
+    return (position - last).clip(upper=RUN_CAP)
+
+
+def step_features(p: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """The published wait holds a level, then jumps. Describe where we are in that pattern."""
+    diff = p - p.shift(1)
+    known = diff.notna()
+    moved = known & (diff != 0)
+    out = {
+        # a gap in the data restarts the count, because we cannot know what happened inside it
+        "slots_at_level": _slots_since(moved | ~known),
+        "last_step_size": diff.where(moved).ffill(limit=RUN_CAP),
+        "slots_since_step_up": _slots_since(known & (diff > 0)),
+        "slots_since_step_down": _slots_since(known & (diff < 0)),
+        "changes_3h": moved.astype("float64").rolling(12, min_periods=6).sum(),
+    }
+    for name in out:
+        out[name] = out[name].where(p.notna())
+    return out
+
+
+def neighbour_features(p: pd.DataFrame, neighbours: dict[str, list[str]]) -> dict[str, pd.DataFrame]:
+    """What the closest other A&Es are showing right now (spill-over between nearby hospitals)."""
+    change = p - p.shift(4)
+    nearest_now, nearest_change, mean_now, mean_change = {}, {}, {}, {}
+    for hospital in p.columns:
+        near = [n for n in neighbours.get(hospital, []) if n in p.columns]
+        if not near:
+            continue
+        nearest_now[hospital] = p[near[0]]
+        nearest_change[hospital] = change[near[0]]
+        mean_now[hospital] = p[near].mean(axis=1)
+        mean_change[hospital] = change[near].mean(axis=1)
+    frame = lambda cols: pd.DataFrame(cols, index=p.index).reindex(columns=p.columns)
+    return {
+        "nearest_now": frame(nearest_now),
+        "nearest_change_1h": frame(nearest_change),
+        "neighbours_mean_now": frame(mean_now),
+        "neighbours_change_1h": frame(mean_change),
+        "now_vs_neighbours": p - frame(mean_now),
+    }
+
+
 def build_features(
     df: pd.DataFrame,
     target: str,
     horizon_h: int,
     weather: pd.DataFrame | None = None,
     holidays: dict[date, str] | None = None,
+    neighbours: dict[str, list[str]] | None = None,
 ) -> pd.DataFrame:
     """Long table: origin, hospital, y (answer), y_now, and feature columns.
 
@@ -90,6 +147,11 @@ def build_features(
     f["city_change_1h"] = _broadcast(city - city.shift(4), p)
     f["now_vs_city"] = p.sub(city, axis=0)
 
+    # --- optional groups: the step pattern of the series, and the nearest other hospitals
+    f.update(step_features(p))
+    if neighbours is not None:
+        f.update(neighbour_features(p, neighbours))
+
     # --- calendar of the target time (known in advance)
     target_time = p.index + pd.Timedelta(hours=horizon_h)
     hour = pd.Series(target_time.hour + target_time.minute / 60, index=p.index)
@@ -117,6 +179,11 @@ def build_features(
     return long
 
 
-def feature_columns(table: pd.DataFrame, use_weather: bool = True) -> list[str]:
-    drop = {"origin", "y"} | (set() if use_weather else set(WEATHER_FEATURES))
+def feature_columns(
+    table: pd.DataFrame, use_weather: bool = True, use_steps: bool = True, use_neighbours: bool = True
+) -> list[str]:
+    drop = {"origin", "y"}
+    drop |= set() if use_weather else set(WEATHER_FEATURES)
+    drop |= set() if use_steps else set(STEP_FEATURES)
+    drop |= set() if use_neighbours else set(NEIGHBOUR_FEATURES)
     return [c for c in table.columns if c not in drop]
