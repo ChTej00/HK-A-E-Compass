@@ -105,11 +105,13 @@ def build_features(
     weather: pd.DataFrame | None = None,
     holidays: dict[date, str] | None = None,
     neighbours: dict[str, list[str]] | None = None,
+    require_answer: bool = True,
 ) -> pd.DataFrame:
     """Long table: origin, hospital, y (answer), y_now, and feature columns.
 
     Rows are kept only where the current value and the answer both exist. Other features may be NaN;
-    LightGBM handles missing values natively.
+    LightGBM handles missing values natively. Live forecasting passes `require_answer=False`, because
+    the newest rows are exactly the ones whose answer has not happened yet.
     """
     k = horizon_h * STEPS_PER_HOUR
     p = to_panel(df, target)
@@ -174,7 +176,7 @@ def build_features(
 
     long = pd.concat({name: frame.stack(future_stack=True) for name, frame in f.items()}, axis=1)
     long.index.names = ["origin", "hospital"]
-    long = long.dropna(subset=["y", "y_now"]).reset_index()
+    long = long.dropna(subset=["y", "y_now"] if require_answer else ["y_now"]).reset_index()
     long["hospital"] = long["hospital"].astype("category")
     return long
 

@@ -91,7 +91,7 @@ no weather at all (fallback if it shows no predictive value, which is plausible)
 
 **Caveat.** Open-Meteo history is a reanalysis (a model's reconstruction), not station readings.
 
-## D6. Travel time v1: distance-based estimate behind a swappable interface (14 Nov 2026) *(planned, M3)*
+## D6. Travel time v1: distance-based estimate behind a swappable interface (14 Nov 2026, built 15 Nov)
 
 **What.** v1 estimates travel time from straight-line distance with a detour factor, an average speed and a
 harbour-crossing penalty, clearly labelled approximate. It sits behind one interface so v2 can replace it
@@ -104,7 +104,18 @@ routing needs the community GTFS plus a street network, which doesn't fit v1's h
 **Alternatives.** Full routing now with r5py (v2 plan); precomputed district matrix (still needs a router
 to compute it).
 
-## D7. Agent v1: plain SDK tool calling, with a rule-based red-flag check first (14 Nov 2026) *(planned, M3)*
+**As built (15 Nov).** `travel/estimate.py`: 10 min overhead + straight-line km x 1.4 / 20 km/h, +10 min to
+cross the harbour, +10 min for the Lantau link, shown as a +/-25% range. These are first guesses, not fitted
+values, and the 10-trip spot check against a journey planner is still to do. Regions come from rough bounding
+boxes; Lamma and other small islands are not handled.
+
+**Ferry-only trips are not offered.** The first replay sent 22% of decisions to St John Hospital on Cheung
+Chau, because a short wait there outweighed a flat ferry penalty. A ferry has a timetable and no overnight
+service, the model knows neither, and telling someone to take a ferry to an A&E is a bad recommendation. St
+John is now suggested only to someone already on Cheung Chau. Cost: the headline saving fell from 82 to 75
+minutes.
+
+## D7. Agent v1: plain SDK tool calling, with a rule-based red-flag check first (14 Nov 2026, built 15 Nov)
 
 **What.** One loop over a handful of tools using the LLM SDK directly, no LangGraph in v1. Before the LLM sees
 a message, a deterministic check looks for red-flag and crisis language and returns the fixed 999 / crisis
@@ -116,6 +127,33 @@ and an LLM alone can't promise that; a rule layer in front gives a floor that do
 
 **Alternatives.** LangGraph from the start (revisit in v1.1 if the flow gains real steps); LLM-only safety
 (no guarantee).
+
+**As built (15 Nov): three layers, not two.** The first safety eval showed the fixed rules catch 100% of the
+wording they were written around but only 22% of held-out paraphrases ("an elephant sitting on my chest",
+"我已經寫好遺書"). So the rules are a floor that works with no network, not the safety system. A second layer
+was added: one separate AI call that only classifies the message as emergency, crisis or none, with a
+forced answer shape, before the tool-using agent runs. Both layers return fixed text, so an emergency
+reply cannot contain a hospital name or a waiting time. The main agent carries the same rules in its
+instructions as a third layer. Any failure (no network, a refusal, too many tool steps) returns a fixed safe
+message that says to call 999 if it could be an emergency.
+
+**More choices made while building.**
+- The held-out prompts are never used to change the rules; otherwise the rule-layer score would mean nothing.
+- The tool loop is written by hand (about 25 lines) instead of using the SDK's tool runner, so every step can
+  be explained and so tests can swap in a fake model. Tests run with no API key.
+- Model: the agent talks to a small provider interface (`agent/providers.py`: screen, turn, add tool
+  results) with two implementations. The default is a free open model run locally with Ollama, chosen
+  because the project has no budget for API calls; nothing leaves the laptop. Claude through the Anthropic
+  API (`claude-opus-5-5`, with the API's server-side fallback beta) is the alternative, set in `.env`.
+  A small local model is expected to be weaker at catching unusual emergency wording and at Cantonese, and
+  a free hosted demo cannot run Ollama, so the model for the public demo is still an open decision (M5).
+- Tool inputs use `strict` schemas, and every number in an answer must come from a tool result.
+- Privacy: nothing the user types is written to disk or logged. With Ollama, messages stay on the machine.
+  With a hosted model they are sent to that provider, and the UI must say so.
+
+**Not verified yet.** The full agent has not been run against a real model yet, so there is no measured
+safety rate for layers 2 and 3. `evals/reports/safety.md` says this explicitly. The Cantonese prompts were
+not written by a native speaker.
 
 ## D8. Hosting: Hugging Face Spaces with Docker (14 Nov 2026) *(planned, M5)*
 
@@ -298,6 +336,50 @@ this experiment only. The feature code stays in `features.py`, switched off, so 
 **Also fixed.** The "What the model uses" table in `forecast.md` had been computed from the last variant
 trained (the 120-day ablation) instead of the shipped model. It now refits the shipped model explicitly.
 The ranking changed slightly; no error or coverage number changed.
+
+## D18. Recommender and hindsight evaluation design (15 Nov 2026)
+
+**What.** `total = travel + forecast wait at the arrival time`. The wait at arrival is read off a straight
+line through the published value now and the +1h, +2h, +3h forecasts. The 80% band is zero now and grows with
+the square root of time over the first hour. The evaluation replays every 15-minute moment of the forecast
+test period from 18 starting points (one landmark per district) under four methods: nearest, current waits
+only, the app, and an oracle that knows the future.
+
+**Why.** Trips rarely take a whole number of hours, so some interpolation is needed, and a straight line is
+the simplest one to explain. Including "current waits only" separates what forecasting adds from what simply
+looking at the published board adds. The oracle shows the most any method could save. The recommender is pure
+functions, so the live app and the evaluation run the same code.
+
+**Result (`evals/reports/regret.md`).** The app's pick is 75 minutes shorter on average than the nearest A&E
+(median 50). Most of that comes from using current waits at all (72 minutes); forecasting adds about 3 more
+and cuts the gap to the oracle from 13.7 to 10.7 minutes. With every trip twice as long the saving is 58.
+
+**Alternatives.** Train extra models at 15-minute horizons instead of interpolating (more models to maintain
+for a small part of the total); weight starting points by population (planned with the census data in v2).
+
+**Caveats.** The outcome is HA's published estimate at the arrival time, not a measured wait. Travel times
+are unverified straight-line estimates. The app's pick is 36 minutes away on average against 16 for the
+nearest, so the saving is a longer trip traded for a shorter wait, which not every patient can make. The
+interpolated band contained the published value 75.9% of the time against a target of 80%, so it is slightly
+too narrow at arrival times that fall between whole hours.
+
+## D19. Hyperparameters: searched, gain too small, settings kept (15 Nov 2026)
+
+**What.** The fixed LightGBM settings from D14 stay. A search was run and its winner was not adopted.
+
+**Why.** `evals/run_tuning.py` scored 12 random settings plus the current one, each at 200 to 1,200 trees, on
+blocks 4, 8 and 12 at +2h. The winner was the current settings with 1,200 trees instead of 400; no other
+setting beat the current one by more than 0.07%. On blocks 13 to 24, which the search never used, the winner
+was better at all three horizons for the non-urgent target but only by 0.39% on average (0.62%, 0.40%, 0.16%),
+and Triage III did not move. The rule written before the run required at least 0.5%, so the verdict is keep.
+Three times the trees for a 0.1 to 0.2 minute gain is not worth slower training.
+
+**Alternatives.** Adopt 1,200 trees anyway (breaks the pre-set rule for a gain smaller than the noise between
+blocks); a larger or Bayesian search (the flat results across very different settings suggest the features,
+not the settings, are the limit).
+
+**Caveat.** The confirmation blocks had been scored before for other results; they were untouched by this
+search, not unseen altogether.
 
 ## Known issues to carry forward
 

@@ -17,6 +17,7 @@ dependencies = [
     "matplotlib>=3.8",
     "lightgbm>=4.3",
     "scikit-learn>=1.4",
+    "anthropic>=2.8",
 ]
 
 [project.optional-dependencies]

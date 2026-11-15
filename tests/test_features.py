@@ -110,3 +110,20 @@ def test_neighbour_features_use_the_listed_hospitals():
     assert np.allclose(a.loc[shared, "nearest_now"], b.loc[shared, "y_now"])
     assert not set(NEIGHBOUR_FEATURES) & set(feature_columns(table, use_neighbours=False))
     assert not set(STEP_FEATURES) & set(feature_columns(table, use_steps=False))
+
+
+def test_live_features_match_training_features():
+    """No training/serving skew: the newest row built from a 35-day window equals the same row built from
+    the full history, and rows without an answer are kept only when asked for."""
+    clean = make_clean(days=60)
+    full = build_features(clean, "t45_p50_min", 2)
+    origin = full["origin"].max()
+    window = clean[clean["observed_at"] >= origin - pd.Timedelta(days=35)]
+    window = window[window["observed_at"] <= origin]  # live: nothing after "now" exists
+    live = build_features(window, "t45_p50_min", 2, require_answer=False)
+    assert live["origin"].max() == origin and live["y"].isna().any()
+    feats = [c for c in feature_columns(full) if c != "hospital"]
+    a = full[full["origin"] == origin].set_index("hospital")[feats]
+    b = live[live["origin"] == origin].set_index("hospital")[feats].loc[a.index]
+    for col in feats:
+        assert np.allclose(a[col].to_numpy(), b[col].to_numpy(), equal_nan=True), col

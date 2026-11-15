@@ -16,7 +16,7 @@ Work in progress. Forecasting is evaluated; the recommender and the agent are no
 | M0: data sources verified, collector running, history downloaded | Done |
 | M1: clean dataset, exploratory analysis, baselines | Done |
 | M2: forecasting model with intervals | Done |
-| M3: travel times, recommendation engine, basic agent with safety eval | Not started |
+| M3: travel times, recommendation engine, basic agent with safety eval | In progress: recommender, regret eval and agent built; agent not yet run against the API; travel spot check not done |
 
 ## Results so far: forecasting
 
@@ -38,11 +38,34 @@ Source: [`evals/reports/forecast.md`](evals/reports/forecast.md).
 - Weather features did not help and were removed. Details and ablations are in the report.
 - Step-pattern and neighbouring-hospital features were also tested and rejected: both were 0.1% to 0.2%
   worse ([`evals/reports/feature_experiment.md`](evals/reports/feature_experiment.md)).
+- A time-aware hyperparameter search found only a 0.4% gain on blocks it had not seen (more trees), below
+  the 0.5% bar set beforehand, so the settings were kept ([`evals/reports/tuning.md`](evals/reports/tuning.md)).
 
 ![Forecast error by method](evals/reports/figures/forecast_mae_by_horizon.png)
 
-Caveats: 13 months of data, so no repeated seasons; hyperparameters were not tuned; and the target is HA's
-published estimate, rounded to the half hour, not a measured wait.
+Caveats: 13 months of data, so no repeated seasons; and the target is HA's published estimate, rounded to
+the half hour, not a measured wait.
+
+## Results so far: recommendation
+
+Replaying 544,000 non-urgent decisions from 18 starting points (one per district) over the same test period.
+"Time to be seen" is an estimated travel time plus HA's **published estimate** at the arrival time; it is not
+a measured patient wait. Source: [`evals/reports/regret.md`](evals/reports/regret.md).
+
+| Method | Mean time to be seen (min) | Saved vs nearest A&E (min) |
+|---|---|---|
+| Go to the nearest A&E | 198.3 | 0 |
+| Travel + current published wait (no forecast) | 125.9 | 72.3 |
+| **App: travel + forecast wait at arrival** | **123.0** | **75.3** |
+| Oracle (knows the future) | 112.2 | 86.0 |
+
+- Following the app's top pick is **75 minutes shorter on average** than going to the nearest A&E (median 50).
+- Most of that comes from looking at the published waits at all; forecasting adds about 3 minutes.
+- It is a trade: the app's pick is 36 minutes away on average, the nearest A&E 16.
+- Travel times are straight-line estimates not yet checked against a journey planner. With every trip made
+  twice as long the saving is still 58 minutes.
+
+![Time saved by district](evals/reports/figures/regret_by_district.png)
 
 ## What exists today
 
@@ -71,6 +94,12 @@ python -m aecompass.clean.build                      # raw -> data/clean/aed_wai
 python evals/run_eda.py                              # charts and findings
 python evals/run_baselines.py                        # baseline table
 python evals/run_forecast.py --ablations             # model vs baselines, intervals (about 20 minutes)
+python evals/run_regret.py                           # recommender vs nearest A&E, in hindsight (about a minute)
+python -m aecompass.forecast.train                   # train the models the live recommender uses (about 2 minutes)
+python -m aecompass.recommend.cli "Langham Place" --refresh   # where you'd likely be seen soonest, right now
+python evals/run_safety.py                           # red-flag safety eval, rule layer (instant, no key needed)
+python evals/run_safety.py --agent                   # the same through the full agent (model set in .env)
+python -m aecompass.agent.chat --refresh             # talk to the agent (local Ollama model by default)
 ```
 
 Data lands in `data/raw/`, which is not committed.
