@@ -76,7 +76,7 @@ On failure it opens a GitHub issue (GitHub also emails the repo owner).
 **Risks.** GitHub disables scheduled workflows after 60 days with no repo activity (the finals break is
 about 3 weeks, so fine). The brief asks for "every 15 minutes": the data is 15-minute, the job is hourly.
 
-## D5. Weather: Open-Meteo for model features, HKO collected live for warnings (14 Nov 2026) *(planned, M1)*
+## D5. Weather: Open-Meteo for model features, HKO collected live for warnings (14 Nov 2026) *(tested in M2; weather features then dropped, see D16)*
 
 **What.** Temperature, rain and humidity features come from Open-Meteo's hourly archive. HKO current weather
 and warnings are collected hourly from now on.
@@ -206,6 +206,71 @@ the clean table entirely (loses the evidence that the feed stalls).
 
 **Open question for the live app.** When the feed is stale right now, the app should say so rather than
 present an old number as current.
+
+## D14. Model design: one LightGBM per horizon, predicting the change, trained on absolute error (15 Nov 2026)
+
+**What.** For each target and horizon (+1h, +2h, +3h) one LightGBM model shared by all 18 hospitals, with
+`hospital` as a categorical feature. It predicts `wait(t+h) - wait(now)`; the current wait is added back.
+The training loss is absolute error (L1). Hyperparameters were fixed before the run and not tuned.
+
+**Why.**
+- *Change, not level.* The wait is sticky. Predicting the change means a model that learns nothing equals
+  persistence, the strongest baseline at +1h, instead of something worse.
+- *L1 loss.* The reported metric is MAE, so the model is trained on the thing it is judged on. Squared error
+  would chase the rare huge swings.
+- *One shared model.* 18 separate models would each see 1/18 of the data. A shared model learns patterns common
+  to all hospitals (the morning drop, the evening build-up) and still tells hospitals apart by the category.
+- *Separate model per horizon.* Simple and standard ("direct" forecasting). The alternative, predicting +1h and
+  feeding that back in to get +2h, compounds its own errors.
+- *No tuning.* With only 13 months there is no spare data to tune on. Tuning against the same test blocks that
+  produce the headline number would make that number optimistic.
+
+**Alternatives.** Per-hospital models; predicting the level; squared-error loss; recursive forecasting; a
+tuned model with a held-out tuning period (worth doing in v2 with more data).
+
+**Shortcut taken.** Training uses forecasts made on the hour and half hour only (half the rows). Forecasts
+15 minutes apart are near-duplicates; on one block this cost 0.3 minutes of MAE and halved run time.
+Testing uses every 15-minute forecast.
+
+## D15. Intervals: rolling conformal from the previous block's errors, per hospital (15 Nov 2026)
+
+**What.** The 80% interval for a forecast is `prediction + [10th, 90th percentile]` of the model's signed
+errors (actual minus predicted) for that hospital in the previous two-week test block.
+
+**Why.**
+- Those errors are genuinely out-of-sample: the previous block was predicted by a model that had not seen it.
+  Errors on training data would be too small and the intervals too narrow.
+- No extra models. Quantile regression needs two more models per horizon.
+- Per hospital, because error size differs several-fold between hospitals. One city-wide margin would
+  over-cover the calm hospitals and under-cover the volatile ones.
+- Signed percentiles (not one symmetric margin) let the interval be lopsided, which suits a wait that can
+  jump up further than it can fall.
+- "Previous block" rather than "all past errors" lets the width adapt as conditions change.
+
+**Alternatives.** Quantile regression (LightGBM `objective="quantile"`); a held-out calibration slice inside
+the training window (the model then can't train on its most recent data); MAPIE (adds a dependency for
+about 20 lines of logic).
+
+**Limits.** The formal conformal guarantee assumes errors are exchangeable (roughly: no drift over time).
+Time series break that, so coverage is measured, not assumed; the report gives it per block. The interval
+has the same width at 4am and 6pm for a given hospital, which is cruder than it could be.
+
+## D16. No weather in the model; train on all history, not a recent window (15 Nov 2026)
+
+**What.** The shipped model has no weather features and trains on everything since 14 Oct 2025.
+
+**Why.** Both were tested as ablations on the same folds (see `evals/reports/forecast.md`):
+- Adding temperature, rain and humidity did not improve the error at any horizon. Dropping them removes an
+  external dependency, a serving-time data source and the reanalysis caveat in D5.
+- Training on only the last 120 days was slightly worse than using all history, including in the blocks where
+  a 120-day window contains no data from before the 1 Jan 2026 fee change. So there is no evidence that
+  pre-fee-change data hurts.
+
+**Alternatives.** Keep weather "because it should matter" (it adds complexity for no measured gain).
+
+**Caveats.** One weather point for the whole city, hourly, from a reanalysis: a weak test of weather. Rare
+events (typhoon signals, black rainstorms) are too few in 13 months to learn from; HKO warnings are being
+collected for a later test. This supersedes the modelling half of D5.
 
 ---
 

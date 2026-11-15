@@ -1,0 +1,109 @@
+target,hospital,horizon_h,persistence,seasonal_naive,historical_mean,model
+t45_p50_min,Alice Ho Miu Ling Nethersole Hospital,1,22.069,40.737,36.489,19.318
+t45_p50_min,Alice Ho Miu Ling Nethersole Hospital,2,30.265,40.719,36.524,23.371
+t45_p50_min,Alice Ho Miu Ling Nethersole Hospital,3,36.47,40.752,36.534,25.881
+t45_p50_min,Caritas Medical Centre,1,30.126,46.014,38.107,24.604
+t45_p50_min,Caritas Medical Centre,2,43.066,45.99,38.1,29.577
+t45_p50_min,Caritas Medical Centre,3,52.224,45.982,38.116,32.515
+t45_p50_min,Kwong Wah Hospital,1,46.143,85.377,75.897,36.375
+t45_p50_min,Kwong Wah Hospital,2,66.54,85.366,75.946,43.979
+t45_p50_min,Kwong Wah Hospital,3,82.335,85.398,75.926,48.923
+t45_p50_min,North District Hospital,1,40.684,83.98,80.966,36.134
+t45_p50_min,North District Hospital,2,56.716,83.944,80.993,45.927
+t45_p50_min,North District Hospital,3,69.475,83.964,81.016,52.806
+t45_p50_min,North Lantau Hospital,1,25.858,38.219,32.303,21.963
+t45_p50_min,North Lantau Hospital,2,35.191,38.211,32.285,25.939
+t45_p50_min,North Lantau Hospital,3,41.104,38.24,32.31,28.012
+t45_p50_min,Pamela Youde Nethersole Eastern Hospital,1,42.227,95.118,74.827,36.524
+t45_p50_min,Pamela Youde Nethersole Eastern Hospital,2,60.554,95.164,74.841,45.486
+t45_p50_min,Pamela Youde Nethersole Eastern Hospital,3,76.32,95.139,74.787,51.366
+t45_p50_min,Pok Oi Hospital,1,29.799,69.051,59.715,26.07
+t45_p50_min,Pok Oi Hospital,2,43.635,69.038,59.718,33.25
+t45_p50_min,Pok Oi Hospital,3,55.224,69.069,59.75,38.292
+t45_p50_min,Prince of Wales Hospital,1,37.901,75.113,63.478,29.728
+t45_p50_min,Prince of Wales Hospital,2,57.966,75.059,63.446,36.754
+t45_p50_min,Prince of Wales Hospital,3,75.527,75.126,63.513,41.564
+t45_p50_min,Princess Margaret Hospital,1,42.597,83.089,68.397,36.848
+t45_p50_min,Princess Margaret Hospital,2,59.181,83.114,68.416,45.292
+t45_p50_min,Princess Margaret Hospital,3,71.666,83.135,68.473,51.1
+t45_p50_min,Queen Elizabeth Hospital,1,28.534,42.336,35.291,23.445
+t45_p50_min,Queen Elizabeth Hospital,2,41.235,42.351,35.291,28.314
+t45_p50_min,Queen Elizabeth Hospital,3,51.187,42.384,35.314,30.997
+t45_p50_min,Queen Mary Hospital,1,32.51,65.305,52.958,27.664
+t45_p50_min,Queen Mary Hospital,2,46.496,65.327,52.972,34.535
+t45_p50_min,Queen Mary Hospital,3,57.155,65.347,52.993,39.312
+t45_p50_min,Ruttonjee Hospital,1,28.147,55.321,50.157,25.61
+t45_p50_min,Ruttonjee Hospital,2,39.92,55.355,50.194,32.239
+t45_p50_min,Ruttonjee Hospital,3,48.568,55.361,50.248,36.226
+t45_p50_min,St John Hospital,1,12.125,15.074,13.166,10.809
+t45_p50_min,St John Hospital,2,14.423,15.076,13.164,11.55
+t45_p50_min,St John Hospital,3,15.679,15.079,13.167,11.761
+t45_p50_min,Tin Shui Wai Hospital,1,27.971,68.181,63.284,24.991
+t45_p50_min,Tin Shui Wai Hospital,2,41.877,68.215,63.312,32.635
+t45_p50_min,Tin Shui Wai Hospital,3,53.067,68.213,63.334,37.977
+t45_p50_min,Tseung Kwan O Hospital,1,38.776,69.247,58.008,30.187
+t45_p50_min,Tseung Kwan O Hospital,2,60.165,69.26,58.024,38.125
+t45_p50_min,Tseung Kwan O Hospital,3,79.195,69.204,58.001,43.249
+t45_p50_min,Tuen Mun Hospital,1,35.18,81.549,74.838,30.622
+t45_p50_min,Tuen Mun Hospital,2,51.424,81.574,74.87,38.989
+t45_p50_min,Tuen Mun Hospital,3,64.79,81.548,74.862,44.519
+t45_p50_min,United Christian Hospital,1,43.47,76.047,64.564,34.065
+t45_p50_min,United Christian Hospital,2,65.106,76.032,64.552,42.527
+t45_p50_min,United Christian Hospital,3,82.205,76.036,64.594,47.993
+t45_p50_min,Yan Chai Hospital,1,32.978,59.8,52.072,28.355
+t45_p50_min,Yan Chai Hospital,2,46.896,59.83,52.099,35.133
+t45_p50_min,Yan Chai Hospital,3,56.115,59.87,52.089,39.163
+t3_p50_min,Alice Ho Miu Ling Nethersole Hospital,1,6.781,6.677,5.715,5.186
+t3_p50_min,Alice Ho Miu Ling Nethersole Hospital,2,6.92,6.678,5.72,5.25
+t3_p50_min,Alice Ho Miu Ling Nethersole Hospital,3,6.995,6.682,5.722,5.284
+t3_p50_min,Caritas Medical Centre,1,5.453,5.725,4.606,4.223
+t3_p50_min,Caritas Medical Centre,2,5.92,5.721,4.603,4.297
+t3_p50_min,Caritas Medical Centre,3,6.165,5.725,4.606,4.351
+t3_p50_min,Kwong Wah Hospital,1,9.361,9.778,8.142,7.079
+t3_p50_min,Kwong Wah Hospital,2,9.936,9.785,8.146,7.224
+t3_p50_min,Kwong Wah Hospital,3,10.031,9.784,8.146,7.264
+t3_p50_min,North District Hospital,1,7.257,8.621,6.902,5.861
+t3_p50_min,North District Hospital,2,8.037,8.616,6.899,6.146
+t3_p50_min,North District Hospital,3,8.567,8.625,6.907,6.28
+t3_p50_min,North Lantau Hospital,1,3.57,3.328,2.667,2.388
+t3_p50_min,North Lantau Hospital,2,4.071,3.33,2.669,2.44
+t3_p50_min,North Lantau Hospital,3,4.383,3.33,2.668,2.477
+t3_p50_min,Pamela Youde Nethersole Eastern Hospital,1,10.091,10.957,8.602,7.794
+t3_p50_min,Pamela Youde Nethersole Eastern Hospital,2,11.227,10.963,8.604,8.044
+t3_p50_min,Pamela Youde Nethersole Eastern Hospital,3,11.847,10.96,8.601,8.137
+t3_p50_min,Pok Oi Hospital,1,3.283,3.639,2.882,2.56
+t3_p50_min,Pok Oi Hospital,2,3.546,3.64,2.883,2.625
+t3_p50_min,Pok Oi Hospital,3,3.707,3.639,2.884,2.669
+t3_p50_min,Prince of Wales Hospital,1,7.291,8.209,6.73,5.739
+t3_p50_min,Prince of Wales Hospital,2,8.101,8.212,6.731,5.917
+t3_p50_min,Prince of Wales Hospital,3,8.582,8.215,6.737,6.02
+t3_p50_min,Princess Margaret Hospital,1,7.706,8.192,6.671,5.809
+t3_p50_min,Princess Margaret Hospital,2,8.483,8.194,6.671,5.969
+t3_p50_min,Princess Margaret Hospital,3,8.687,8.197,6.675,6.029
+t3_p50_min,Queen Elizabeth Hospital,1,4.264,4.428,3.634,3.249
+t3_p50_min,Queen Elizabeth Hospital,2,4.499,4.428,3.634,3.304
+t3_p50_min,Queen Elizabeth Hospital,3,4.693,4.429,3.633,3.338
+t3_p50_min,Queen Mary Hospital,1,5.631,6.544,5.118,4.348
+t3_p50_min,Queen Mary Hospital,2,6.349,6.539,5.114,4.517
+t3_p50_min,Queen Mary Hospital,3,6.67,6.539,5.115,4.593
+t3_p50_min,Ruttonjee Hospital,1,5.636,6.249,4.867,4.4
+t3_p50_min,Ruttonjee Hospital,2,6.174,6.255,4.87,4.544
+t3_p50_min,Ruttonjee Hospital,3,6.623,6.252,4.868,4.604
+t3_p50_min,St John Hospital,1,5.022,6.321,5.984,4.638
+t3_p50_min,St John Hospital,2,6.019,6.323,5.982,4.998
+t3_p50_min,St John Hospital,3,6.537,6.322,5.981,5.049
+t3_p50_min,Tin Shui Wai Hospital,1,3.421,3.518,2.759,2.553
+t3_p50_min,Tin Shui Wai Hospital,2,3.508,3.522,2.76,2.604
+t3_p50_min,Tin Shui Wai Hospital,3,3.694,3.522,2.761,2.642
+t3_p50_min,Tseung Kwan O Hospital,1,7.739,8.906,6.755,6.08
+t3_p50_min,Tseung Kwan O Hospital,2,9.049,8.912,6.758,6.399
+t3_p50_min,Tseung Kwan O Hospital,3,9.842,8.91,6.757,6.499
+t3_p50_min,Tuen Mun Hospital,1,6.319,6.51,5.287,4.825
+t3_p50_min,Tuen Mun Hospital,2,6.682,6.513,5.291,4.871
+t3_p50_min,Tuen Mun Hospital,3,6.924,6.519,5.29,4.933
+t3_p50_min,United Christian Hospital,1,7.38,7.785,6.455,5.668
+t3_p50_min,United Christian Hospital,2,7.914,7.781,6.454,5.797
+t3_p50_min,United Christian Hospital,3,8.066,7.784,6.456,5.837
+t3_p50_min,Yan Chai Hospital,1,7.54,8.35,6.398,5.644
+t3_p50_min,Yan Chai Hospital,2,8.668,8.357,6.403,5.882
+t3_p50_min,Yan Chai Hospital,3,9.207,8.348,6.395,5.984
