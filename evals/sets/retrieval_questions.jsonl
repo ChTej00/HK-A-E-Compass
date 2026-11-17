@@ -1,0 +1,24 @@
+{"lang": "en", "question": "How much is the A&E fee now?", "answer_pattern": "\\$400"}
+{"lang": "en", "question": "What did A&E cost before the fee reform?", "answer_pattern": "\\$180"}
+{"lang": "en", "question": "Do critical and emergency patients have to pay the A&E fee?", "answer_pattern": "(critical|emergency)[^.]{0,200}(exempt|waive|free)|(exempt|waive)[^.]{0,200}(critical|emergency|Category I)"}
+{"lang": "en", "question": "Can I get money back if I leave A&E before seeing a doctor?", "answer_pattern": "refund[^.]{0,120}\\$350|\\$350[^.]{0,120}refund"}
+{"lang": "en", "question": "How long after registering can I ask for the A&E refund?", "answer_pattern": "24 hours"}
+{"lang": "en", "question": "What are the triage categories in A&E?", "answer_pattern": "critical[^.]{0,80}emergency[^.]{0,80}urgent[^.]{0,80}semi-urgent[^.]{0,80}non-urgent"}
+{"lang": "en", "question": "How quickly should urgent Category III patients be seen?", "answer_pattern": "30 minutes"}
+{"lang": "en", "question": "What is the waiting time target for emergency Category II patients?", "answer_pattern": "15 minutes"}
+{"lang": "en", "question": "Where can people with mild symptoms go instead of A&E?", "answer_pattern": "(FMC|Family Medicine Clinic)s?[^.]{0,80}private doctors|private doctors"}
+{"lang": "en", "question": "Is there a directory to find a family doctor?", "answer_pattern": "Primary Care Directory|pcdirectory"}
+{"lang": "en", "question": "Are there public clinics open in the evening?", "answer_pattern": "evening consultation"}
+{"lang": "en", "question": "What help is there for patients who cannot afford the fees?", "answer_pattern": "medical fee waiver"}
+{"lang": "en", "question": "Is there a yearly limit on how much a patient pays?", "answer_pattern": "annual cap|cap of \\$|\\$10,000"}
+{"lang": "en", "question": "Did A&E attendances go down after the fee went up?", "answer_pattern": "(decrease|drop|fell|reduction)[^.]{0,160}(attendance|A&E)|(attendance|A&E)[^.]{0,160}(decrease|drop|fell|reduction)"}
+{"lang": "en", "question": "How do I book a general outpatient clinic appointment?", "answer_pattern": "HA Go|telephone appointment"}
+{"lang": "en", "question": "Who gets treated first in A&E?", "answer_pattern": "(priorit|according to)[^.]{0,160}(clinical condition|urgency|critical)"}
+{"lang": "en", "question": "What does the Hospital Authority do during the winter surge?", "answer_pattern": "service demand surge"}
+{"lang": "en", "question": "Are Chinese medicine clinics an option for minor illness?", "answer_pattern": "Chinese medicine"}
+{"lang": "zh", "question": "急症室而家收費幾多錢？", "answer_pattern": "\\$400"}
+{"lang": "zh", "question": "危殆同危急病人使唔使俾急症室費用？", "answer_pattern": "(critical|emergency)[^.]{0,200}(exempt|waive|free)|(exempt|waive)[^.]{0,200}(critical|emergency|Category I)"}
+{"lang": "zh", "question": "未見醫生就離開急症室可唔可以退款？", "answer_pattern": "refund[^.]{0,120}\\$350|\\$350[^.]{0,120}refund"}
+{"lang": "zh", "question": "急症室分流有邊幾個類別？", "answer_pattern": "critical[^.]{0,80}emergency[^.]{0,80}urgent[^.]{0,80}semi-urgent[^.]{0,80}non-urgent"}
+{"lang": "zh", "question": "病徵輕微可以去邊度睇醫生，唔使去急症室？", "answer_pattern": "(FMC|Family Medicine Clinic)s?[^.]{0,80}private doctors|private doctors"}
+{"lang": "zh", "question": "緊急類別嘅病人目標要喺幾耐內見到醫生？", "answer_pattern": "30 minutes"}

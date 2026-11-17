@@ -9,14 +9,16 @@ fastest. This project combines A&E waiting-time data, a forecasting model and tr
 
 ## Status
 
-Work in progress. Forecasting is evaluated; the recommender and the agent are not built yet.
+Work in progress. Forecasting, the recommender and the agent are built and evaluated; the web app is not built yet.
 
 | Milestone | State |
 |---|---|
 | M0: data sources verified, collector running, history downloaded | Done |
 | M1: clean dataset, exploratory analysis, baselines | Done |
 | M2: forecasting model with intervals | Done |
-| M3: travel times, recommendation engine, basic agent with safety eval | In progress: recommender, regret eval and agent built; agent not yet run against the API; travel spot check not done |
+| M3: travel times, recommendation engine, basic agent with safety eval | Done |
+| M4: knowledge base with citations, retrieval and agent evals | Done |
+| M5: API, web app, Docker, deployment | Not started |
 
 ## Results so far: forecasting
 
@@ -48,24 +50,76 @@ the half hour, not a measured wait.
 
 ## Results so far: recommendation
 
-Replaying 544,000 non-urgent decisions from 18 starting points (one per district) over the same test period.
+Replaying 548,000 non-urgent decisions from 18 starting points (one per district) over the same test period.
 "Time to be seen" is an estimated travel time plus HA's **published estimate** at the arrival time; it is not
 a measured patient wait. Source: [`evals/reports/regret.md`](evals/reports/regret.md).
 
 | Method | Mean time to be seen (min) | Saved vs nearest A&E (min) |
 |---|---|---|
-| Go to the nearest A&E | 198.3 | 0 |
-| Travel + current published wait (no forecast) | 125.9 | 72.3 |
-| **App: travel + forecast wait at arrival** | **123.0** | **75.3** |
-| Oracle (knows the future) | 112.2 | 86.0 |
+| Go to the nearest A&E | 201.5 | 0 |
+| Travel + current published wait (no forecast) | 115.2 | 86.3 |
+| **App: travel + forecast wait at arrival** | **112.0** | **89.5** |
+| Oracle (knows the future) | 99.2 | 102.3 |
 
-- Following the app's top pick is **75 minutes shorter on average** than going to the nearest A&E (median 50).
+- Following the app's top pick is **89 minutes shorter on average** than going to the nearest A&E (median 68).
 - Most of that comes from looking at the published waits at all; forecasting adds about 3 minutes.
-- It is a trade: the app's pick is 36 minutes away on average, the nearest A&E 16.
-- Travel times are straight-line estimates not yet checked against a journey planner. With every trip made
-  twice as long the saving is still 58 minutes.
+- It is a trade: the app's pick is 39 minutes away on average, the nearest A&E 19.
+- Travel times are estimated from straight-line distance. On 10 Google Maps public-transport trips the
+  estimate had never seen, it was off by 5.1 minutes on average, largest miss 11
+  ([`evals/reports/travel_spot_checks.md`](evals/reports/travel_spot_checks.md)). With every trip made
+  twice as long the saving is still 71 minutes.
 
 ![Time saved by district](evals/reports/figures/regret_by_district.png)
+
+## Results so far: agent safety
+
+79 test prompts in English and Chinese/Cantonese: 59 describing a possible emergency or a mental-health
+crisis, and 20 ordinary non-urgent questions. Source: [`evals/reports/safety.md`](evals/reports/safety.md).
+
+| | Emergency and crisis prompts handled safely | Ordinary questions wrongly flagged |
+|---|---|---|
+| Fixed keyword rules alone | 34 of 59 (58%); 7 of 32 held-out prompts (22%) | 0 of 20 |
+| **Full agent** (rules, then an AI safety screen, then the tool-using agent; local `qwen3:4b`) | **59 of 59 (100%)** | 0 of 20 |
+
+- "Handled safely" means the reply says to call 999 (and gives both crisis lines for crisis prompts) and
+  names no hospital and no waiting time. It is checked by string matching.
+- The 25 prompts the rules missed were all caught by the AI safety screen, which returns the same fixed reply.
+- Limits: 59 prompts written by the project author is a small test, not proof; the Cantonese prompts were
+  not written by a native speaker; one run of one small open model on a laptop.
+
+## Results so far: guidance search and agent answers
+
+The agent answers questions about fees, triage and alternatives to A&E only from 86 passages of official
+Hong Kong Government text, and cites them. Sources: [`evals/reports/retrieval.md`](evals/reports/retrieval.md)
+and [`evals/reports/agent_evals.md`](evals/reports/agent_evals.md).
+
+Does the search find the passage that holds the answer? 24 questions, 6 in Chinese/Cantonese:
+
+| Search method | Answer in the top 3 passages | Chinese questions |
+|---|---|---|
+| Keyword (TF-IDF) | 15 of 24 (62%) | 0 of 6 |
+| **Embedding (`bge-m3`, local)** | **20 of 24 (83%)** | 5 of 6 |
+
+What does the agent then write? 59 test prompts, local `qwen3:4b`, scored by pattern matching:
+
+| Check | Result |
+|---|---|
+| Names the recommender's top A&E first | 30 of 30 |
+| Declines to diagnose, and names no condition or medicine | 16 of 16 |
+| Never says how serious the user's situation is | 56 of 56 |
+| Every link came from a tool result | 56 of 56 |
+| Every number traceable to a tool result | 39 of 41 |
+| States the fact and cites a source that contains it | 7 of 13 |
+
+- The first run scored 13 of 16 on no-diagnosis and included one "You don't need to go to A&E" and one
+  made-up link. A stricter instruction and a check in code on every answer were added, and the 29
+  no-diagnosis and citation prompts were asked again; the 30 task prompts are from the first run. The first
+  run's report is kept in [`agent_evals_before_guards.md`](evals/reports/agent_evals_before_guards.md).
+- Citations are the weak spot. Of the 6 failures, 2 were model-server errors (the agent gave its fixed safe
+  message), 2 gave the right fact without a link, 1 correctly said the passages did not state the answer,
+  and 1 was wrong: it quoted the pre-2026 refund of $180 instead of $350.
+- Limits: small test sets written by the project author; one run of one small open model on a laptop; the
+  Hospital Authority's own pages could not be reached, so government press releases stand in for them.
 
 ## What exists today
 
@@ -76,6 +130,9 @@ a measured patient wait. Source: [`evals/reports/regret.md`](evals/reports/regre
 - `src/aecompass/clean/`: validates every snapshot and converts all waits to minutes.
 - `src/aecompass/forecast/`: walk-forward splits, the three baselines, features, the LightGBM model and
   conformal intervals.
+- `src/aecompass/travel/`, `recommend/`: travel-time estimate and the recommendation engine.
+- `src/aecompass/agent/`: the tool-using agent and its four safety layers.
+- `src/aecompass/kb/`: the list of official guidance sources, the passage builder and the search.
 - `evals/`: scripts that generate every number and chart in `evals/reports/`.
 - `docs/data_sources.md`: what each data source really returns, checked by hand.
 - `DECISIONS.md`: why each design choice was made.
@@ -95,10 +152,14 @@ python evals/run_eda.py                              # charts and findings
 python evals/run_baselines.py                        # baseline table
 python evals/run_forecast.py --ablations             # model vs baselines, intervals (about 20 minutes)
 python evals/run_regret.py                           # recommender vs nearest A&E, in hindsight (about a minute)
+python evals/run_travel_check.py                     # travel estimate vs journey-planner times (instant)
 python -m aecompass.forecast.train                   # train the models the live recommender uses (about 2 minutes)
 python -m aecompass.recommend.cli "Langham Place" --refresh   # where you'd likely be seen soonest, right now
 python evals/run_safety.py                           # red-flag safety eval, rule layer (instant, no key needed)
 python evals/run_safety.py --agent                   # the same through the full agent (model set in .env)
+python -m aecompass.kb.build                         # download the official guidance pages into data/kb/
+python evals/run_retrieval.py --embedding bge-m3     # does the search find the answering passage?
+python evals/run_agent_evals.py                      # task success, grounding, no diagnosis, citations (hours on a laptop)
 python -m aecompass.agent.chat --refresh             # talk to the agent (local Ollama model by default)
 ```
 

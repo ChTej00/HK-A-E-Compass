@@ -4,20 +4,24 @@ v1 is a **rough estimate from straight-line distance**, not a routed journey. It
 recommender has something reasonable to add to the wait, and it sits behind one small interface
 (`TravelTime`) so that v2 can swap in real public-transport routing without touching anything else.
 
-    minutes = fixed overhead (walking, waiting)
-            + straight-line km x detour factor / average speed
-            + a penalty when the trip crosses the harbour or the Lantau link
+    minutes = base (walking, waiting) + coefficient x square root of the straight-line km
+            + a penalty when the trip crosses the harbour
+
+Why a square root: longer trips use faster transport (rail, expressway buses), so time grows more slowly
+than distance. A first version assumed one constant speed and was 25 to 70 minutes too slow on trips over
+15 km (see DECISIONS.md D20).
 
 Trips that need the Cheung Chau ferry are **not offered at all**: St John Hospital is only suggested to
 someone already on Cheung Chau, and nobody on Cheung Chau is sent off the island. A ferry has a timetable
 and does not run all night, and this model knows neither.
 
-The numbers in `Params` are first guesses, not fitted values. `evals/reports/travel_spot_checks.md`
-records how far they are from a real journey planner.
+The three numbers in `Params` were fitted to 10 journey-planner trips and then checked on 10 different
+trips; `evals/reports/travel_spot_checks.md` has both.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -54,11 +58,9 @@ def region_of(point: Point) -> str:
 
 @dataclass(frozen=True)
 class Params:
-    overhead_min: float = 10.0  # walking at both ends plus waiting for the first vehicle
-    detour_factor: float = 1.4  # roads and rail lines are longer than the straight line
-    speed_kmh: float = 20.0  # average door-to-door public-transport speed once moving
-    harbour_min: float = 10.0  # Hong Kong Island <-> Kowloon / New Territories
-    lantau_min: float = 10.0  # Lantau <-> anywhere else (one road and rail link)
+    base_min: float = 8.0  # walking at both ends plus waiting for the first vehicle
+    sqrt_km_min: float = 9.8  # minutes per square-root kilometre of straight-line distance
+    harbour_min: float = 8.0  # Hong Kong Island <-> Kowloon / New Territories / Lantau
     spread: float = 0.25  # the range shown is +/- this share of the estimate
     scale: float = 1.0  # multiplies the whole estimate; used to test how much results depend on it
 
@@ -91,10 +93,7 @@ class DistanceTravelTime:
     def _crossing_min(self, a: str, b: str) -> float:
         if a == b:
             return 0.0
-        p, regions = self.params, {a, b}
-        if "lantau" in regions:
-            return p.lantau_min + (p.harbour_min if "hk_island" in regions else 0.0)
-        return p.harbour_min  # hk_island <-> kowloon_nt
+        return self.params.harbour_min if "hk_island" in {a, b} else 0.0
 
     def estimate(self, origin: Point, hospital: str, depart: datetime | None = None) -> TravelEstimate | None:
         p = self.params
@@ -102,7 +101,7 @@ class DistanceTravelTime:
         if start != end and "cheung_chau" in (start, end):
             return None  # ferry-only trip: not offered
         km = distance_km(origin, self.hospitals[hospital])
-        minutes = p.overhead_min + km * p.detour_factor / p.speed_kmh * 60 + self._crossing_min(start, end)
+        minutes = p.base_min + p.sqrt_km_min * math.sqrt(km) + self._crossing_min(start, end)
         minutes *= p.scale
         return TravelEstimate(minutes, minutes * (1 - p.spread), minutes * (1 + p.spread), self.method)
 

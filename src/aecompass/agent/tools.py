@@ -8,6 +8,7 @@ we send the result back for the model to put into words. So every number in an a
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -16,6 +17,7 @@ from aecompass.collect import archive
 from aecompass.forecast.dataset import TARGETS, load_clean
 from aecompass.forecast.serve import Models, forecast_latest, load_models
 from aecompass.geo.geocode import geocode
+from aecompass.kb.search import EmbeddingSearch, KeywordSearch, load_chunks
 from aecompass.recommend.engine import Forecast, about_as_good, recommend
 from aecompass.ref import holidays, hospitals
 from aecompass.travel.estimate import DistanceTravelTime
@@ -58,6 +60,28 @@ TOOL_SPECS = [
         "input_schema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
     },
     {
+        "name": "search_triage_guidance",
+        "description": (
+            "Search official Hong Kong Government and Hospital Authority press releases about how A&E works: "
+            "triage categories and their waiting-time targets, the A&E fee, who is exempt, refunds, fee waivers, "
+            "and where people can go other than A&E (clinics, family doctors). Returns passages with their "
+            "source. Use this for any question about rules, fees or how the system works. It contains no "
+            "live waiting times and no medical advice."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What to look up, in English, as a short question or keywords.",
+                }
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "forecast_wait",
         "description": "The published wait now and the forecast 1, 2 and 3 hours ahead, with ranges, for one A&E.",
         "strict": True,
@@ -81,11 +105,32 @@ class Toolbox:
     models: Models
     coords: dict[str, tuple[float, float]]
     holiday_map: dict
+    searcher: object = None  # anything with .search(query, k); see kb/search.py
     _cache: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "Toolbox":
-        return cls(load_clean(), load_models(), hospitals.load(), holidays.load())
+        chunks = load_chunks()
+        embed_model = os.environ.get("AECOMPASS_EMBED_MODEL")
+        # Embedding search alone beat both keyword and hybrid search on the retrieval eval (retrieval.md).
+        searcher = EmbeddingSearch(chunks, embed_model) if embed_model else KeywordSearch(chunks)
+        return cls(load_clean(), load_models(), hospitals.load(), holidays.load(), searcher)
+
+    def search_triage_guidance(self, query: str) -> dict:
+        hits = self.searcher.search(query, 4)
+        if not hits:
+            return {"passages": [], "note": "Nothing relevant was found in the official sources. Say you do not "
+                                            "have official information on this; do not answer from memory."}
+        return {
+            "passages": [
+                {"source_title": h.source.title, "publisher": h.source.publisher, "published": h.source.date,
+                 "url": h.source.url, "text": h.text}
+                for h in hits
+            ],
+            "note": "Answer only from these passages. Name the source title and give its URL for each fact you "
+                    "use. If the passages do not answer the question, say so. Rules and fees can change after "
+                    "the publication date.",
+        }
 
     def _forecasts(self, target: str) -> tuple[pd.Timestamp, dict[str, Forecast]]:
         if target not in self._cache:
@@ -167,6 +212,7 @@ class Toolbox:
             "recommend": self.recommend,
             "get_current_waits": self.get_current_waits,
             "forecast_wait": self.forecast_wait,
+            "search_triage_guidance": self.search_triage_guidance,
         }
         try:
             return json.dumps(handlers[name](**arguments), ensure_ascii=False), False

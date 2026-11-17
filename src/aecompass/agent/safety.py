@@ -86,3 +86,47 @@ def check(text: str) -> SafetyResult:
         if pattern.search(clean):
             return SafetyResult("emergency", label, EMERGENCY_REPLY)
     return SafetyResult(None, None, None)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Layer 4: check the model's own answer before it is shown
+# ---------------------------------------------------------------------------------------------------
+# The first full evaluation found two things a small model occasionally writes that instructions alone
+# did not prevent: telling someone they do not need A&E, and citing a web address it had made up. Both
+# are caught here in code. An answer that trips a check is thrown away and replaced with fixed text.
+
+# Telling the user they do not need care, or judging how serious their own situation is.
+_DISCOURAGES = re.compile(
+    r"\byou (dont|do not|wont|shouldnt|should not) need (to (go|see|visit)|a doctor|treatment|stitches|a&e)|"
+    r"\b(no|not any) need to (go|see|visit)|\byou (can|could|should) (just )?stay (at )?home\b|"
+    r"\b(this|that|it) (is|isnt|is not|does not sound|doesnt sound|sounds) (not )?(an emergency|serious|minor|mild|nothing)\b|"
+    r"\bnot an emergency\b|\byou(re| are|ll be| will be) (fine|ok|okay)\b|\bnothing (serious|to worry)|"
+    r"唔使(去|睇)|不需要(去|看)|不用(去|看)|唔係緊急|不是緊急|唔嚴重|不嚴重"
+)
+_REFUSAL_NEARBY = re.compile(r"cant|cannot|can not|unable to|not able to|無法|不能|唔可以")
+_URL = re.compile(r"https?://[^\s)\]>\"']+")
+
+GUARD_REPLIES = {
+    "discourages care": (
+        "I can't judge how serious this is or whether you need care. If you are worried, go to A&E. "
+        "Tell me where you are and I'll show where you would likely be seen soonest."
+    ),
+    "invented link": (
+        "I couldn't find that in the official sources I have, so I won't guess. "
+        "For fees and how A&E works, please check the Hospital Authority's own information."
+    ),
+}
+
+
+def check_answer(answer: str, tool_outputs: list[str]) -> str | None:
+    """The name of the problem with the model's answer, or None if it may be shown."""
+    clean = normalise(answer)
+    found = _DISCOURAGES.search(clean)
+    if found and not _REFUSAL_NEARBY.search(clean[max(0, found.start() - 60) : found.end()]):
+        return "discourages care"  # "I can't say whether this is serious" is a refusal and is allowed
+    given = " ".join(tool_outputs)
+    for url in _URL.findall(answer):
+        address = url.split("://", 1)[1].rstrip(".,*/")  # passages sometimes print a site without "https://"
+        if address not in given:
+            return "invented link"
+    return None

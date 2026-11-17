@@ -1,11 +1,21 @@
-from,to,model_min,planner_min,notes
-"Langham Place, 8 Argyle Street",Kwong Wah Hospital,13,,
-"Langham Place, 8 Argyle Street",Queen Mary Hospital,48,,
-"One Exchange Square, Exchange Square, 8 Connaught Place",Queen Elizabeth Hospital,34,,
-"Southorn Centre, 130 Hennessy Road",Pamela Youde Nethersole Eastern Hospital,38,,
-"Tuen Mun Town Hall, 3 Tuen Hi Road",Tin Shui Wai Hospital,42,,
-"Tuen Mun Town Hall, 3 Tuen Hi Road",Princess Margaret Hospital,82,,
-"Shatin Town Hall Plant Room, Sha Tin Town Hall",Alice Ho Miu Ling Nethersole Hospital,47,,
-"Sai Kung Tseung Kwan O Government Complex, Sai Kung Tseung Kwan O Government Complex, 38 Pui Shing Road",United Christian Hospital,28,,
-"One Citygate, Citygate, 20 Tat Tung Road",Princess Margaret Hospital,107,,
-"Landmark North, 39 Lung Sum Avenue",Prince of Wales Hospital,75,,
+set,district,from,to,planner_min,notes
+calibration,Yau Tsim Mong,"Langham Place, 8 Argyle Street",Kwong Wah Hospital,9.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov; first suggestion was walking (600 m)"
+calibration,Yau Tsim Mong,"Langham Place, 8 Argyle Street",Queen Mary Hospital,44.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,Central & Western,"One Exchange Square, Exchange Square, 8 Connaught Place",Queen Elizabeth Hospital,31.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,Wan Chai,"Southorn Centre, 130 Hennessy Road",Pamela Youde Nethersole Eastern Hospital,31.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,Tuen Mun,"Tuen Mun Town Hall, 3 Tuen Hi Road",Tin Shui Wai Hospital,45.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,Tuen Mun,"Tuen Mun Town Hall, 3 Tuen Hi Road",Princess Margaret Hospital,57.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,Sha Tin,"Shatin Town Hall Plant Room, Sha Tin Town Hall",Alice Ho Miu Ling Nethersole Hospital,42.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,Sai Kung,"Sai Kung Tseung Kwan O Government Complex, Sai Kung Tseung Kwan O Government Complex, 38 Pui Shing Road",United Christian Hospital,29.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,Islands,"One Citygate, Citygate, 20 Tat Tung Road",Princess Margaret Hospital,37.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov"
+calibration,North,"Landmark North, 39 Lung Sum Avenue",Prince of Wales Hospital,47.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00; read by Claude in the browser on 16 Nov; destination matched to a building on the Prince of Wales Hospital campus"
+validation,Kwun Tong,"Kwun Tong Plaza, 68 Hoi Yuen Road",United Christian Hospital,11.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Kowloon City,"Kowloon City Municipal Services Building, 100 Nga Tsin Wai Road",Queen Elizabeth Hospital,33.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Sham Shui Po,"Sham Shui Po Police Station, Sham Shui Po Police Station, 37A Yen Chow Street",Caritas Medical Centre,16.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Eastern,"Cityplaza, Taikoo Shing, 18 Taikoo Shing Road",Ruttonjee Hospital,25.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Southern,"Kwun King Court, Aberdeen Centre, 1 Nam Ning Street",Queen Mary Hospital,24.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Wong Tai Sin,"Upper Wong Tai Sin Estate Refuse Collection Point, Upper Wong Tai Sin Estate, 8 Wong Tai Sin Road",Pamela Youde Nethersole Eastern Hospital,57.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Yuen Long,"Yuen Long Theatre, 9 Yuen Long Tai Yuk Road",Pok Oi Hospital,14.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Tai Po,"Tai Po Civic Centre, 12 On Pong Road",North District Hospital,32.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Tsuen Wan,"Tsuen Wan Town Hall, 72 Tai Ho Road",Tuen Mun Hospital,45.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"
+validation,Kwai Tsing,"Kwai Tsing Theatre, 12 Hing Ning Road",North Lantau Hospital,49.0,"Google Maps, public transport, first suggested route, depart Mon 16 Nov 2026 10:00, starting from the exact coordinates the model uses; read by Claude in the browser on 16 Nov"

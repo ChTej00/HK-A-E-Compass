@@ -1,11 +1,17 @@
-"""Spot check of the travel-time estimate against a real journey planner.
+"""Check the travel-time estimate against a real journey planner.
 
-    python evals/run_travel_check.py --make     # write the sheet of 10 trips (does not overwrite a filled one)
-    python evals/run_travel_check.py            # score the filled sheet
+    python evals/run_travel_check.py --make     # add any missing trips to the sheet (never overwrites times)
+    python evals/run_travel_check.py            # score the sheet
 
-Fill `planner_min` in `evals/sets/travel_spot_checks.csv` by hand: the public-transport door-to-door time a
-journey planner gives for that trip (note which planner, day and time in `notes`). The trips are fixed in
-advance so they cannot be picked to flatter the model. Writes evals/reports/travel_spot_checks.md.
+The sheet is `evals/sets/travel_spot_checks.csv`. `planner_min` is the public-transport door-to-door time
+a journey planner gives for the trip; `notes` says which planner, day and time. Trips are fixed in this
+file before anyone looks them up, so they cannot be picked to flatter the model.
+
+Two sets of 10 trips:
+- calibration: used to choose the shape of the estimate and fit its three numbers.
+- validation: looked up only after the estimate was fixed. This is the honest error figure.
+
+Writes evals/reports/travel_spot_checks.md (generated; never hand-edited).
 """
 
 from __future__ import annotations
@@ -17,64 +23,113 @@ from pathlib import Path
 import pandas as pd
 
 from aecompass.ref import hospitals
-from aecompass.travel.estimate import DistanceTravelTime
+from aecompass.ref.hospitals import distance_km
+from aecompass.travel.estimate import HOSPITAL_REGION, MAINLAND, DistanceTravelTime, region_of
 
 SHEET = Path("evals/sets/travel_spot_checks.csv")
 ORIGINS = Path("evals/regret_origins.csv")
 REPORT = Path("evals/reports/travel_spot_checks.md")
 # (starting district, hospital): short hops, cross-harbour, long New Territories trips, Lantau
-TRIPS = [
-    ("Yau Tsim Mong", "Kwong Wah Hospital"),
-    ("Yau Tsim Mong", "Queen Mary Hospital"),
-    ("Central & Western", "Queen Elizabeth Hospital"),
-    ("Wan Chai", "Pamela Youde Nethersole Eastern Hospital"),
-    ("Tuen Mun", "Tin Shui Wai Hospital"),
-    ("Tuen Mun", "Princess Margaret Hospital"),
-    ("Sha Tin", "Alice Ho Miu Ling Nethersole Hospital"),
-    ("Sai Kung", "United Christian Hospital"),
-    ("Islands", "Princess Margaret Hospital"),
-    ("North", "Prince of Wales Hospital"),
-]
+TRIPS = {
+    "calibration": [
+        ("Yau Tsim Mong", "Kwong Wah Hospital"),
+        ("Yau Tsim Mong", "Queen Mary Hospital"),
+        ("Central & Western", "Queen Elizabeth Hospital"),
+        ("Wan Chai", "Pamela Youde Nethersole Eastern Hospital"),
+        ("Tuen Mun", "Tin Shui Wai Hospital"),
+        ("Tuen Mun", "Princess Margaret Hospital"),
+        ("Sha Tin", "Alice Ho Miu Ling Nethersole Hospital"),
+        ("Sai Kung", "United Christian Hospital"),
+        ("Islands", "Princess Margaret Hospital"),
+        ("North", "Prince of Wales Hospital"),
+    ],
+    "validation": [
+        ("Kwun Tong", "United Christian Hospital"),
+        ("Kowloon City", "Queen Elizabeth Hospital"),
+        ("Sham Shui Po", "Caritas Medical Centre"),
+        ("Eastern", "Ruttonjee Hospital"),
+        ("Southern", "Queen Mary Hospital"),
+        ("Wong Tai Sin", "Pamela Youde Nethersole Eastern Hospital"),
+        ("Yuen Long", "Pok Oi Hospital"),
+        ("Tai Po", "North District Hospital"),
+        ("Tsuen Wan", "Tuen Mun Hospital"),
+        ("Kwai Tsing", "North Lantau Hospital"),
+    ],
+}
+
+
+def first_guess(origin, hospital, coords) -> float:
+    """The original, unfitted estimate (constant speed), kept only to show what the check changed."""
+    start, end = region_of(origin), HOSPITAL_REGION.get(hospital, MAINLAND)
+    minutes = 10 + distance_km(origin, coords[hospital]) * 1.4 / 20 * 60
+    if start != end:
+        minutes += (10 if "lantau" in (start, end) else 0) + (10 if "hk_island" in (start, end) else 0)
+    return minutes
+
+
+def load_origins() -> dict:
+    with ORIGINS.open(encoding="utf-8") as f:
+        return {row["district"]: row for row in csv.DictReader(f)}
 
 
 def make() -> None:
-    if SHEET.exists() and pd.read_csv(SHEET)["planner_min"].notna().any():
-        raise SystemExit(f"{SHEET} already has planner times in it; not overwriting.")
-    with ORIGINS.open(encoding="utf-8") as f:
-        origins = {row["district"]: row for row in csv.DictReader(f)}
-    model = DistanceTravelTime(hospitals.load())
-    rows = []
-    for district, hospital in TRIPS:
-        o = origins[district]
-        estimate = model.estimate((float(o["lat"]), float(o["lon"])), hospital)
-        rows.append({"from": o["matched_name"], "to": hospital, "model_min": round(estimate.minutes),
-                     "planner_min": "", "notes": ""})
-    SHEET.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(SHEET, index=False)
-    print(f"wrote {SHEET}; fill in planner_min")
+    origins = load_origins()
+    old = pd.read_csv(SHEET) if SHEET.exists() else pd.DataFrame(columns=["set", "district", "to"])
+    have = set(zip(old["set"], old["district"], old["to"]))
+    rows = [
+        {"set": name, "district": district, "from": origins[district]["matched_name"], "to": hospital,
+         "planner_min": "", "notes": ""}
+        for name, trips in TRIPS.items() for district, hospital in trips if (name, district, hospital) not in have
+    ]
+    pd.concat([old, pd.DataFrame(rows)], ignore_index=True).to_csv(SHEET, index=False)
+    print(f"{len(rows)} trips added to {SHEET}")
 
 
 def score() -> None:
     df = pd.read_csv(SHEET)
-    done = df.dropna(subset=["planner_min"])
-    out = ["# Travel-time spot check", "", "Generated by `python evals/run_travel_check.py`. Do not edit by hand.", ""]
-    if done.empty:
-        out += ["**Not done yet.** No planner times have been entered, so the travel estimates are unverified.", ""]
-    else:
-        error = done["model_min"] - done["planner_min"]
+    coords, origins = hospitals.load(), load_origins()
+    model = DistanceTravelTime(coords)
+    point = lambda d: (float(origins[d]["lat"]), float(origins[d]["lon"]))
+    df["km"] = [distance_km(point(d), coords[h]) for d, h in zip(df["district"], df["to"])]
+    df["model_min"] = [model.estimate(point(d), h).minutes for d, h in zip(df["district"], df["to"])]
+    df["first_guess_min"] = [first_guess(point(d), h, coords) for d, h in zip(df["district"], df["to"])]
+    p = model.params
+    out = [
+        "# Travel-time check against a journey planner",
+        "",
+        "Generated by `python evals/run_travel_check.py`. Do not edit by hand.",
+        "",
+        f"Current estimate: {p.base_min:.0f} + {p.sqrt_km_min} x sqrt(straight-line km) minutes, plus "
+        f"{p.harbour_min:.0f} to cross the harbour. `first guess` is the original unfitted estimate "
+        "(10 + km x 1.4 / 20 km/h, plus 10 for the harbour and 10 for Lantau).",
+        "",
+        "- **calibration** trips were used to choose the square-root shape and fit its three numbers, so the "
+        "current estimate's error on them is flattering.",
+        "- **validation** trips were looked up only after the estimate was fixed. Their error is the honest figure.",
+        "",
+    ]
+    for name in TRIPS:
+        part = df[df["set"] == name]
+        done = part.dropna(subset=["planner_min"])
+        out += [f"## {name.capitalize()} trips", ""]
+        if done.empty:
+            out += ["**Not done yet.** No planner times entered.", ""]
+            continue
+        error, old_error = done["model_min"] - done["planner_min"], done["first_guess_min"] - done["planner_min"]
         out += [
-            f"{len(done)} of {len(df)} fixed trips checked. `model_min` is the straight-line estimate; "
-            "`planner_min` was read by hand from a journey planner (see notes).",
+            f"{len(done)} of {len(part)} trips checked.",
             "",
-            f"- Mean absolute error: **{error.abs().mean():.1f} minutes**",
-            f"- Mean error (model minus planner): {error.mean():+.1f} minutes (positive = the model is too slow)",
-            f"- Largest miss: {error.abs().max():.0f} minutes",
+            "| | mean absolute error (min) | mean error (min, + = estimate too slow) | largest miss (min) |",
+            "|---|---|---|---|",
+            f"| Current estimate | **{error.abs().mean():.1f}** | {error.mean():+.1f} | {error.abs().max():.0f} |",
+            f"| First guess | {old_error.abs().mean():.1f} | {old_error.mean():+.1f} | {old_error.abs().max():.0f} |",
             "",
-            "| from | to | model (min) | planner (min) | error | notes |",
-            "|---|---|---|---|---|---|",
-            *[f"| {r['from']} | {r['to']} | {r['model_min']:.0f} | {r['planner_min']:.0f} | "
-              f"{r['model_min'] - r['planner_min']:+.0f} | {r['notes'] if pd.notna(r['notes']) else ''} |"
-              for _, r in done.iterrows()],
+            "| from | to | km | planner | current | error | first guess |",
+            "|---|---|---|---|---|---|---|",
+            *[f"| {r['from'].split(',')[0]} | {r['to']} | {r['km']:.1f} | {r['planner_min']:.0f} | {r['model_min']:.0f} | "
+              f"{r['model_min'] - r['planner_min']:+.0f} | {r['first_guess_min']:.0f} |" for _, r in done.iterrows()],
+            "",
+            f"How the planner times were read: {done['notes'].iloc[-1]}",
             "",
         ]
     REPORT.write_text("\n".join(out), encoding="utf-8")

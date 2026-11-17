@@ -45,7 +45,7 @@ def test_region_boxes_and_water_crossings():
     across = travel.estimate(central, "Queen Elizabeth Hospital")
     assert same_side.low < same_side.minutes < same_side.high
     no_penalty = DistanceTravelTime(HOSPITALS, Params(harbour_min=0)).estimate(central, "Queen Elizabeth Hospital")
-    assert across.minutes - no_penalty.minutes == pytest.approx(10)
+    assert across.minutes - no_penalty.minutes == pytest.approx(8)
     assert DistanceTravelTime(HOSPITALS, Params(scale=2)).estimate(central, "Queen Mary Hospital").minutes == pytest.approx(2 * same_side.minutes)
     # ferry-only trips are not offered, in either direction
     cheung_chau = (22.2086, 114.028)
@@ -82,3 +82,29 @@ def test_geocode_parse_reads_the_service_response():
     assert len(places) == 1
     assert places[0].matched_name == "Tuen Mun Town Hall, 3 Tuen Hi Road" and places[0].district == "Tuen Mun"
     assert places[0].point == (22.39181, 113.97714)
+
+
+def test_knowledge_base_text_extraction_and_chunking():
+    from aecompass.kb.build import chunk, extract_text
+
+    page = ('<html><div id="x">menu</div><span id="pressrelease" class="fontSize1">&nbsp; The fee is $400.<br><br>'
+            'Critical patients are exempt.<br>Ends/Thursday, January 1, 2026<br>Issued at HKT 18:00</span><div>footer</div></html>')
+    assert extract_text(page) == ["The fee is $400.", "Critical patients are exempt."]
+    paragraphs = [f"Paragraph {i} " + "word " * 60 for i in range(6)]
+    passages = chunk(paragraphs)
+    assert len(passages) == 2 and all(len(p.split()) >= 130 for p in passages)
+    assert " ".join(passages).split() == " ".join(paragraphs).split()  # nothing lost, nothing repeated
+
+
+def test_keyword_search_returns_the_matching_passage_with_its_source():
+    from aecompass.kb.search import KeywordSearch
+
+    chunks = [
+        {"chunk_id": "fee-reform-day1#0", "source_id": "fee-reform-day1", "text": "Patients who leave before consultation can apply for a refund of $350."},
+        {"chunk_id": "lcq22-ae-services#0", "source_id": "lcq22-ae-services", "text": "Patients are triaged into five categories: critical, emergency, urgent, semi-urgent and non-urgent."},
+    ]
+    search = KeywordSearch(chunks)
+    hit = search.search("what are the triage categories", 1)[0]
+    assert hit.chunk_id == "lcq22-ae-services#0" and hit.source.url.startswith("https://www.info.gov.hk/")
+    assert search.search("refund if I leave", 1)[0].source.id == "fee-reform-day1"
+    assert search.search("capital of France") == []  # nothing relevant: return nothing, not the least-bad passage

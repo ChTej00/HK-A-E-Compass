@@ -21,6 +21,9 @@ from aecompass.agent.prompts import CLASSIFIER_PROMPT, DISCLAIMER, SAFE_FALLBACK
 from aecompass.agent.tools import TOOL_SPECS
 
 MAX_STEPS = 6  # a question needs one or two tool calls; more than this means something is going wrong
+# Only the most recent turns are sent to the model. A small local model reads about 4,000 tokens at a time;
+# if a long chat overflowed that, the oldest text would be cut first, and the oldest text is the safety rules.
+MAX_HISTORY_MESSAGES = 6
 REPLIES = {"emergency": safety.EMERGENCY_REPLY, "crisis": safety.CRISIS_REPLY}
 
 
@@ -38,6 +41,9 @@ class Agent:
         """`llm` is a provider from providers.py (or a stand-in in tests); `toolbox` runs the tools."""
         self.llm, self.toolbox = llm, toolbox
         self.model = getattr(llm, "name", "unknown")
+        # What happened on the most recent reply, for the evals: which layer answered and what the tools
+        # returned. Kept in memory only and overwritten on the next message; never written to disk here.
+        self.handled_by, self.trace, self.last_error = None, [], None
 
     @classmethod
     def from_env(cls) -> "Agent":
@@ -49,14 +55,26 @@ class Agent:
     def reply(self, text: str, history: list | None = None) -> str:
         """Answer one user message. `history` is the earlier turns of this session, kept by the caller in memory."""
         history = history if history is not None else []
+        self.trace, self.last_error = [], None
         flagged = safety.check(text).kind  # layer 1: no AI involved
+        self.handled_by = "rules" if flagged else None
         try:
             flagged = flagged or self.llm.screen(CLASSIFIER_PROMPT, text)  # layer 2
             if flagged in REPLIES:
+                self.handled_by = self.handled_by or "screen"
                 return REPLIES[flagged]
-            answer = self._converse(history + [{"role": "user", "content": text}])  # layer 3
-        except Exception:  # noqa: BLE001 - whatever went wrong, the user gets a safe message, not a stack trace
+            recent = history[-MAX_HISTORY_MESSAGES:]
+            answer = self._converse(recent + [{"role": "user", "content": text}])  # layer 3
+        except Exception as error:  # noqa: BLE001 - whatever went wrong, the user gets a safe message, not a stack trace
+            self.handled_by = self.handled_by or "fallback"
+            self.last_error = f"{type(error).__name__}: {error}"[:300]  # for the evals; never contains user text
             return REPLIES.get(flagged, SAFE_FALLBACK)
+        # Layer 4: check what the model wrote before anyone sees it.
+        problem = safety.check_answer(answer, [step["output"] for step in self.trace])
+        if problem:
+            self.handled_by, self.last_error = "guard", problem
+            return f"{safety.GUARD_REPLIES[problem]}\n\n{DISCLAIMER}"
+        self.handled_by = "agent"
         history += [{"role": "user", "content": text}, {"role": "assistant", "content": answer}]
         return f"{answer}\n\n{DISCLAIMER}"
 
@@ -70,5 +88,6 @@ class Agent:
                     raise RuntimeError("empty answer")
                 return turn.text
             results = [(call, *self.toolbox.run(call.name, call.arguments)) for call in turn.calls]
+            self.trace += [{"tool": c.name, "arguments": c.arguments, "output": out, "is_error": err} for c, out, err in results]
             self.llm.add_tool_results(messages, results)
         raise RuntimeError("too many steps")

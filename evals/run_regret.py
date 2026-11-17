@@ -170,7 +170,7 @@ def main() -> None:
         "",
         "**Read this first.** \"Time to be seen\" here is an estimated travel time plus the Hospital Authority's "
         "**published estimate** at the arrival time. It is not a measured patient wait, and the travel times are "
-        "straight-line approximations that have not yet been checked against a journey planner. The result shows "
+        "straight-line approximations (checked against a journey planner on 20 trips, see `travel_spot_checks.md`). The result shows "
         "what the published numbers imply, not what patients experienced.",
         "",
         f"- Period: {r['origin'].min():%d %b %Y} to {r['origin'].max():%d %b %Y}; every 15-minute moment where all "
@@ -180,9 +180,9 @@ def main() -> None:
         f"{len(r):,} replayed decisions.",
         "- Non-urgent target (Triage IV & V median wait). Forecasts are the walk-forward ones from "
         "`evals/reports/forecast.md`, so no decision uses information from its own future.",
-        f"- Travel model: {p.overhead_min:.0f} min overhead + straight-line km x {p.detour_factor} / {p.speed_kmh:.0f} km/h, "
-        f"plus {p.harbour_min:.0f} min to cross the harbour and {p.lantau_min:.0f} min for the Lantau link. First "
-        "guesses, not fitted.",
+        f"- Travel model: {p.base_min:.0f} min + {p.sqrt_km_min} x square root of the straight-line km, plus "
+        f"{p.harbour_min:.0f} min to cross the harbour. Fitted to 10 journey-planner trips and checked on 10 others "
+        "(`travel_spot_checks.md`).",
         "- Ferry-only trips are not offered: St John Hospital (Cheung Chau) is never suggested to these 18 "
         "starting points, so 17 A&Es compete.",
         "",

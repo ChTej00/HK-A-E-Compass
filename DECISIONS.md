@@ -104,9 +104,9 @@ routing needs the community GTFS plus a street network, which doesn't fit v1's h
 **Alternatives.** Full routing now with r5py (v2 plan); precomputed district matrix (still needs a router
 to compute it).
 
-**As built (15 Nov).** `travel/estimate.py`: 10 min overhead + straight-line km x 1.4 / 20 km/h, +10 min to
-cross the harbour, +10 min for the Lantau link, shown as a +/-25% range. These are first guesses, not fitted
-values, and the 10-trip spot check against a journey planner is still to do. Regions come from rough bounding
+**As built (15 Nov), then replaced (16 Nov, see D20).** The first version was 10 min overhead + straight-line
+km x 1.4 / 20 km/h, +10 min to cross the harbour, +10 min for the Lantau link. These were guesses, and the
+journey-planner check showed they were badly wrong on long trips. Regions come from rough bounding
 boxes; Lamma and other small islands are not handled.
 
 **Ferry-only trips are not offered.** The first replay sent 22% of decisions to St John Hospital on Cheung
@@ -151,9 +151,15 @@ message that says to call 999 if it could be an emergency.
 - Privacy: nothing the user types is written to disk or logged. With Ollama, messages stay on the machine.
   With a hosted model they are sent to that provider, and the UI must say so.
 
-**Not verified yet.** The full agent has not been run against a real model yet, so there is no measured
-safety rate for layers 2 and 3. `evals/reports/safety.md` says this explicitly. The Cantonese prompts were
-not written by a native speaker.
+**Result (16 Nov).** With a local `qwen3:4b` model the full agent handled 59 of 59 emergency and crisis
+prompts safely and wrongly flagged 0 of 20 ordinary questions. The rules answered 34; the AI screen caught
+the other 25; none reached the tool-using agent. This is one run of one small model on 59 prompts written
+by the project author: enough to show the design works, not enough to call it proven. Two things found on
+the first real run and fixed: the model leaked its private reasoning into answers (now stripped before
+anything is shown or kept), and only the last few turns of a chat are sent to the model, because a small
+model's 4,096-token window would otherwise cut the oldest text first, which is the safety rules. Known gap:
+the screen reads only the newest message, so an emergency that only becomes clear across several messages
+relies on the main agent's instructions. The Cantonese prompts were not written by a native speaker.
 
 ## D8. Hosting: Hugging Face Spaces with Docker (14 Nov 2026) *(planned, M5)*
 
@@ -350,17 +356,18 @@ the simplest one to explain. Including "current waits only" separates what forec
 looking at the published board adds. The oracle shows the most any method could save. The recommender is pure
 functions, so the live app and the evaluation run the same code.
 
-**Result (`evals/reports/regret.md`).** The app's pick is 75 minutes shorter on average than the nearest A&E
-(median 50). Most of that comes from using current waits at all (72 minutes); forecasting adds about 3 more
-and cuts the gap to the oracle from 13.7 to 10.7 minutes. With every trip twice as long the saving is 58.
+**Result (`evals/reports/regret.md`, rerun 16 Nov with the refitted travel estimate, D20).** The app's pick is
+89 minutes shorter on average than the nearest A&E (median 68). Most of that comes from using current waits
+at all (86 minutes); forecasting adds about 3 more and cuts the gap to the oracle from 16.0 to 12.8 minutes.
+With every trip twice as long the saving is 71. (With the first, unfitted travel guess these were 75, 72 and 58.)
 
 **Alternatives.** Train extra models at 15-minute horizons instead of interpolating (more models to maintain
 for a small part of the total); weight starting points by population (planned with the census data in v2).
 
 **Caveats.** The outcome is HA's published estimate at the arrival time, not a measured wait. Travel times
-are unverified straight-line estimates. The app's pick is 36 minutes away on average against 16 for the
-nearest, so the saving is a longer trip traded for a shorter wait, which not every patient can make. The
-interpolated band contained the published value 75.9% of the time against a target of 80%, so it is slightly
+are straight-line estimates, about 5 minutes off on average (D20). The app's pick is 39 minutes away on
+average against 19 for the nearest, so the saving is a longer trip traded for a shorter wait, which not every
+patient can make. The interpolated band contained the published value 75.0% of the time against a target of 80%, so it is slightly
 too narrow at arrival times that fall between whole hours.
 
 ## D19. Hyperparameters: searched, gain too small, settings kept (15 Nov 2026)
@@ -381,10 +388,119 @@ not the settings, are the limit).
 **Caveat.** The confirmation blocks had been scored before for other results; they were untouched by this
 search, not unseen altogether.
 
+## D20. Travel estimate refitted after the journey-planner check (16 Nov 2026)
+
+**What.** The travel estimate is now `8 + 9.8 x sqrt(straight-line km)` minutes, plus 8 to cross the harbour,
+shown as a +/-25% range. The Lantau penalty is gone. Ferry-only trips are still not offered (D6).
+
+**Why.** Checked against Google Maps public-transport times for 10 trips fixed in advance, the first guess
+(constant speed) was off by 15.0 minutes on average: fine under 9 km (about 4 minutes) but 25 to 70 minutes
+too slow on the three trips over 15 km. Long trips use faster transport (rail, expressway buses), so time
+grows more slowly than distance. Two simple shapes were fitted to those 10 trips, a straight line and a
+square root, and compared by leave-one-out error (10.7 vs 8.4 minutes); the square root was chosen. The
+choice was then fixed and tested on 10 new trips looked up afterwards: **5.1 minutes mean absolute error,
+largest miss 11** (first guess on the same trips: 11.9, largest miss 59).
+
+**Effect on the headline.** The regret evaluation was rerun: the saving against the nearest A&E moved from
+75 to 89 minutes (median 68), because distant hospitals had been unfairly penalised. Forecasting still adds
+about 3 minutes over current waits alone.
+
+**Alternatives.** Keep the guesses and only report their error (the recommender would stay biased against
+far hospitals); real routing (v2, D6).
+
+**Caveats.** 20 trips is a small check. Planner times were read by Claude in a browser, not by Tejas, for one
+departure time (Monday 10:00), so night-time and peak-hour travel are untested. The 10 validation trips start
+from the same 18 district landmarks the regret evaluation uses. The estimate still knows nothing about
+which places have a rail line.
+
+## D21. Knowledge base and retrieval for the agent (16 Nov 2026, finished 17 Nov)
+
+**What.** The agent answers questions about triage, fees, refunds and alternatives to A&E only from passages
+found in a small knowledge base, and cites the source title and URL. The knowledge base is 86 passages cut
+from 7 Hong Kong Government press releases on info.gov.hk (Hospital Authority and Health Bureau statements,
+2023 to 2026) and the Hospital Authority's 2026 fee table (a PDF attached to one release), listed in
+`src/aecompass/kb/sources.py`. Passages are whole paragraphs grouped to about 130 words, capped at 220. Search sits behind one `search(query, k)` method with two implementations: keyword (TF-IDF) and
+embedding (vector) search through Ollama.
+
+**Why these sources.** The brief asks for HA's own triage and fee pages, but www.ha.org.hk still refuses
+connections from the development machine (D1). The press releases are official, reachable, dated, and state
+the same rules (five triage categories, the $400 fee from 1 Jan 2026, the exemption for critical and
+emergency patients, the $350 refund). Only the list of URLs is committed; the text is downloaded locally into
+the git-ignored `data/kb/` and not redistributed.
+
+**Why two search methods.** Keyword search needs no model and is easy to explain, so it is the baseline. On
+24 test questions it found the answering passage in the top 3 for 15 of 18 English questions and 0 of 6
+Chinese ones, and it missed "How much is the A&E fee now?" because the passage that says $400 shares few
+words with the question. Embedding search with the multilingual `bge-m3` model, run locally through Ollama,
+found it for 20 of 24 questions (15 of 18 English, 5 of 6 Chinese) and is what the agent uses. Combining the
+two rankings (hybrid) also scored 20 of 24 and ranked the answer first less often (15 times against 19), so
+it was not adopted. Source: `evals/reports/retrieval.md`.
+
+**Alternatives.** A vector database such as Chroma or FAISS (pointless for 86 passages: a matrix
+multiplication is exact and instant); letting the model answer from memory (unverifiable, and fees changed
+in 2026); pasting all the text into every prompt (would not fit a small local model's context).
+
+**Caveats.** Press releases are written for news, not as reference pages, and several are question-and-answer
+replies full of statistics tables that make poor passages. Rules can change after a release's date; the tool
+returns the date with every passage. One source tells non-emergency patients to "avoid using A&E", which
+conflicts with this project's rule never to discourage attendance: the agent is told to report it only as
+what the guidance says and never to judge whether a user's own symptoms are mild.
+
+## D22. Answer guard in code, and what the agent evaluation showed (17 Nov 2026)
+
+**What.** A fourth safety layer, `check_answer` in `src/aecompass/agent/safety.py`, reads the model's finished
+answer before the user sees it. If the answer tells the user they do not need care, judges how serious their
+situation is, or contains a web address that was in no tool result, the answer is thrown away and replaced
+with fixed text. The system prompt also gained a rule to say plainly, first, that the agent cannot diagnose.
+
+**Why.** The first full run of `evals/run_agent_evals.py` (59 prompts, local `qwen3:4b`) found two answers
+that instructions alone had not prevented: "You don't need to go to A&E for this" for a cut finger, and a
+made-up gov.hk address cited for a wrong "20 minutes" target. Both break rules this project treats as
+absolute. A check in code does not depend on a small model following instructions every time.
+
+**Result** (`evals/reports/agent_evals.md`; first run kept in `agent_evals_before_guards.md`). The 29
+no-diagnosis and citation prompts were asked again with the guard and the new prompt rule. The 30 task
+prompts were not asked again, so their rows are from the first run.
+
+| | First run | With guard and new rule |
+|---|---|---|
+| Task success (names the recommender's top A&E first) | 30 of 30 | not asked again |
+| No diagnosis | 13 of 16 | 16 of 16 |
+| No judging of the user's situation | 54 of 55 | 56 of 56 |
+| No invented links | 54 of 55 | 56 of 56 |
+| Grounding (every number traceable to a tool result) | 39 of 40 | 39 of 41 |
+| Citations (states the fact and cites a source containing it) | 9 of 13 | 7 of 13 |
+| Replaced by the fixed safe message because the model failed | 3 | 2 |
+
+**Reading it honestly.**
+- The guard did not fire once in the second run. The improvement in no-diagnosis therefore comes from the
+  new prompt rule or from run-to-run chance, not from the guard. The guard is covered by unit tests and was
+  checked against the first run's saved answers (it blocks the two bad ones and none of the other 53).
+- Citations got worse, and 13 questions is too few to call that a real change. The six failures: two Chinese
+  questions where the local model server returned an error and the agent fell back to its safe message; two
+  answers with the right fact and no link; one answer that said, truthfully, that the passages it was given
+  did not state the Category II target; and one wrong answer, a "$180 refund" taken from an older passage
+  when the current refund is $350. That last one is the real weakness: the knowledge base holds rules
+  from before and after the January 2026 fee change, and the model picked the old one.
+- Scoring is by pattern matching. Three false alarms in the scorer were fixed before this table was made:
+  numbers the sources write with a space ("6 719"), numbers in table cells, and a site the source prints
+  without "https://". The two grounding misses that remain are a month number in a date and a year.
+- The task prompts have not been run with the new prompt rule, so "30 of 30" describes the earlier prompt.
+
+**Alternatives.** A second model call to review each answer (doubles a wait that is already minutes long on
+this laptop); relying on the prompt alone (failed twice in 59); refusing every question about the user's own
+symptoms before the model sees it (would also block ordinary "where is quickest" questions).
+
+**Caveats.** The guard is a pattern list, like layer 1, so it only catches wording it knows. One run each,
+one small model, test prompts written by the project author.
+
 ## Known issues to carry forward
 
 - **Fee change inside the training window.** The A&E charge rose from $180 to $400 on 1 Jan 2026 (triage I
   and II exempt). Demand before and after may differ. M2 must compare errors across that date.
 - **Target is coarse.** `t45p50` is rounded up to the nearest 0.5 hour, so it moves slowly and
   "no change" (persistence) will be a strong baseline at +1h.
-- **HA pages for the knowledge base** couldn't be read from the dev machine. Needed in M4.
+- **HA pages for the knowledge base** couldn't be read from the dev machine. Government press releases and
+  the HA fee table are used instead (D21).
+- **Old and new fee rules sit side by side in the knowledge base.** The agent once quoted the pre-2026 $180
+  refund (D22). Options: drop superseded passages, or rank newer sources first.

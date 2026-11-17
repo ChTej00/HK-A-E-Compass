@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from aecompass.agent import safety
-from aecompass.agent.loop import MAX_STEPS, Agent
+from aecompass.agent.loop import MAX_HISTORY_MESSAGES, MAX_STEPS, Agent
 from aecompass.agent.prompts import DISCLAIMER, SAFE_FALLBACK
 from aecompass.agent.providers import AnthropicLLM, OllamaLLM, ToolCall, Turn, strip_reasoning
 from aecompass.agent.tools import TOOL_SPECS
@@ -80,6 +80,19 @@ def test_tool_loop_runs_tools_then_returns_the_answer_with_the_disclaimer():
     assert toolbox.calls == [("recommend", {"place": "Mong Kok"}), ("broken", {})]
     assert [(c.id, is_error) for c, _, is_error in llm.results[0]] == [("a", False), ("b", True)]
     assert [m["role"] for m in history] == ["user", "assistant"]  # kept in memory for the session only
+
+
+def test_only_recent_turns_are_sent_to_the_model():
+    class Recording(FakeLLM):
+        def turn(self, system, messages, tools):
+            self.seen = list(messages)
+            return Turn(text="ok")
+
+    llm = Recording()
+    history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"old {i}"} for i in range(20)]
+    Agent(llm, FakeToolbox()).reply("Wait at Pok Oi?", history)
+    assert len(llm.seen) == MAX_HISTORY_MESSAGES + 1 and llm.seen[-1]["content"] == "Wait at Pok Oi?"
+    assert llm.seen[0]["role"] == "user" and len(history) == 22  # the session keeps everything; the model sees the tail
 
 
 def test_failures_fail_closed_to_a_safe_message():
@@ -200,3 +213,29 @@ def test_anthropic_turn_and_single_message_of_results():
     with pytest.raises(RuntimeError, match="refusal"):
         llm.turn("system prompt", messages, TOOL_SPECS)
     assert llm.screen("p", "t") == "emergency"
+
+
+# --- layer 4: the model's own answer is checked before it is shown ------------------------------------
+
+
+def test_answer_guard_replaces_answers_that_discourage_care_or_invent_a_link():
+    told_off = Agent(FakeLLM(turns=[Turn(text="You don't need to go to A&E for this.")]), FakeToolbox())
+    reply = told_off.reply("small cut on my finger")
+    assert "don't need" not in reply and "can't judge" in reply and told_off.handled_by == "guard"
+
+    judging = Agent(FakeLLM(turns=[Turn(text="Kwong Wah is quickest. This is not an emergency.")]), FakeToolbox())
+    assert "not an emergency" not in judging.reply("sore wrist, Mong Kok")
+
+    made_up = Turn(text="The target is 20 minutes (https://www.gov.hk/made/up.htm).")
+    inventing = Agent(FakeLLM(turns=[Turn(calls=[ToolCall("a", "search_triage_guidance", {"query": "x"})]), made_up]), FakeToolbox())
+    reply = inventing.reply("what is the urgent target?")
+    assert "gov.hk/made" not in reply and "20 minutes" not in reply and inventing.handled_by == "guard"
+
+
+def test_answer_guard_lets_good_answers_through():
+    assert safety.check_answer("I can't assess if this is serious. If you're worried, go to the nearest A&E.", []) is None
+    assert safety.check_answer("Kwong Wah looks soonest, about 50 minutes for non-urgent patients.", []) is None
+    source = '{"url": "https://www.info.gov.hk/gia/general/202601/01/P2026010100712.htm", "text": "see www.pcdirectory.gov.hk"}'
+    assert safety.check_answer("The fee is $400 (https://www.info.gov.hk/gia/general/202601/01/P2026010100712.htm).", [source]) is None
+    assert safety.check_answer("There is a directory at https://www.pcdirectory.gov.hk/.", [source]) is None
+    assert safety.check_answer("See https://example.com/fees", [source]) == "invented link"
