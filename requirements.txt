@@ -1,0 +1,3 @@
+# Streamlit Community Cloud installs from this file: the package itself, with the web page extras.
+# The dependency list lives in pyproject.toml.
+.[app]

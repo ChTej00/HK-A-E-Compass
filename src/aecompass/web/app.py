@@ -213,4 +213,5 @@ def main() -> None:
             render()
 
 
-main()
+if __name__ == "__main__":  # `streamlit run` runs this file as __main__; streamlit_app.py imports it
+    main()

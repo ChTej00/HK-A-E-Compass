@@ -1,0 +1,71 @@
+name: train
+
+# Weekly: retrain the forecasting models on all the data collected so far and put them on the GitHub
+# Release tagged "data" as models.tar.gz, where the hosted demo downloads them on start-up.
+# Same recipe as `python -m aecompass.forecast.train` on a laptop. Nothing is committed by this job.
+#
+# The 80% interval widths (offsets.json) come from the walk-forward evaluation, which this job does not
+# run. They are read from the release (uploaded by hand) and packed in with the new models.
+#
+# First run: start it by hand (Actions tab -> train -> Run workflow).
+
+on:
+  schedule:
+    - cron: "17 19 * * 0" # Sundays 19:17 UTC = Mondays 03:17 Hong Kong time, when waits are quiet
+  workflow_dispatch:
+
+permissions:
+  contents: write # upload release assets
+
+concurrency:
+  group: train
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -e .
+
+      - name: Download all raw A&E snapshots and the interval widths
+        run: |
+          mkdir -p data/raw/aed data/models
+          gh release download data -p "aed_raw_*.jsonl.gz" -D data/raw/aed
+          gunzip -f data/raw/aed/*.gz
+          gh release download data -p "offsets.json" -D data/eval_offsets
+
+      - name: Build the clean table
+        run: python -m aecompass.clean.build
+
+      - name: Train
+        run: |
+          python -m aecompass.forecast.train
+          cp data/eval_offsets/offsets.json data/models/offsets.json
+
+      - name: Check the models load and forecast
+        run: |
+          python - <<'EOF'
+          from aecompass.forecast.dataset import load_clean
+          from aecompass.forecast.serve import forecast_latest, load_models
+          from aecompass.ref import holidays
+          as_of, forecasts = forecast_latest(load_clean(), load_models(), "t45_p50_min", holidays.load())
+          assert len(forecasts) >= 15, f"only {len(forecasts)} hospitals forecast"
+          assert all(f.lo[0] == f.lo[0] for f in forecasts.values()), "intervals are missing"
+          print(f"ok: {len(forecasts)} hospitals forecast as of {as_of}")
+          EOF
+
+      - name: Upload to the release
+        run: |
+          tar -czf models.tar.gz -C data models
+          gh release upload data models.tar.gz --clobber

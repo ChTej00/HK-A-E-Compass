@@ -161,7 +161,7 @@ model's 4,096-token window would otherwise cut the oldest text first, which is t
 the screen reads only the newest message, so an emergency that only becomes clear across several messages
 relies on the main agent's instructions. The Cantonese prompts were not written by a native speaker.
 
-## D8. Hosting: Hugging Face Spaces with Docker (14 Nov 2026; built 20 Nov, see D26)
+## D8. Hosting: Hugging Face Spaces with Docker (14 Nov 2026) *(replaced by D26)*
 
 **What.** One free Docker Space running FastAPI and Streamlit together.
 
@@ -566,37 +566,46 @@ a normal user, not root.
 need about 4 GB more memory on an 8 GB laptop, and GPU passthrough differs by machine); baking data and
 models into the image (needed for hosting, see D8, but would put data in every local build).
 
-## D26. The hosted demo has no chat, and rebuilds its data and models on every start (20 Nov 2026)
+## D26. Hosting: Streamlit Community Cloud, no chat, models trained weekly by GitHub Actions (20 Nov 2026)
 
-**What.** The public copy on a free Hugging Face Space runs with `AECOMPASS_CHAT=off`: the live board and
-"Where should I go?" work, and the chat tab explains that the assistant runs only locally. On every start,
-`python -m aecompass.deploy.serve` downloads the raw monthly files and `offsets.json` from the public GitHub
-Release `data`, fetches the last two days from the official archive, trains the models with the usual
-recipe, then starts the API (internal port 8000) and the page (public port 7860). The Space's Dockerfile
-(`deploy/space/`) clones the public GitHub repository, so it always builds from the committed code.
+**What.** The public demo runs free on Streamlit Community Cloud from `streamlit_app.py`. On start-up it
+downloads the last two months of raw snapshots and `models.tar.gz` from the public GitHub Release `data`,
+fetches the last two days from the official archive, starts the API in a background thread on an internal
+port, and draws the page, which talks to that API over HTTP as it does locally. The chat is off
+(`AECOMPASS_CHAT=off`). A weekly GitHub Actions workflow (`.github/workflows/train.yml`) retrains the models
+on all the history and uploads `models.tar.gz`.
 
-**Why no chat.** The agent needs an AI model. The free host can't reach Ollama on a laptop; running Ollama
-inside the Space would fit in memory but answer in minutes, and an open, unauthenticated chat could be
-abused; a paid API needs a key and a budget. The forecasting and recommendation, which are the evaluated
-core, work without it. The chat stays fully usable locally, and its evaluations are in `evals/reports/`.
+**Why not Hugging Face (D8).** When it came to deploying, Hugging Face listed hosting Docker and Gradio
+Spaces as a feature of its $9/month PRO plan. Streamlit Community Cloud is free and builds straight from the
+GitHub repository, but runs a single program with at most about 2.7 GB of memory and 2 CPU cores.
 
-**Why rebuild on start.** A free Space's disk is wiped when it sleeps, and `data/` is never committed. The
-release is already kept current by the hourly collector, so the Space needs no extra pipeline, and its
-models are retrained on all the data up to the moment it starts. `offsets.json` (the 80% interval widths,
-about 10 KB) can't be rebuilt there, because it comes from the walk-forward evaluation, so it is uploaded
-to the release by hand and downloaded with the data.
+**Why the API runs inside the page's process.** The host runs one program. Starting the API in a thread
+keeps the page-talks-to-API design (D24) unchanged, so the same code runs locally, in Docker and hosted.
 
-**Measured.** In a local container starting from an empty disk: data downloaded in about 1 s (from a local
-copy of the release), caught up with the archive by 19 s, models trained by 284 s, page up straight after.
-A free Space's CPU may be slower. The first visitor after the Space has slept waits for this.
+**Why train in GitHub Actions, not on start-up.** Training on all the history (about 1.7 million rows) is
+risky in 2.7 GB, and a cold start would take minutes. A GitHub runner has far more memory, the data is
+already in the release there, and a weekly schedule keeps the hosted model current without anyone
+remembering to retrain. The job checks that the new models load and forecast all hospitals with intervals
+before uploading. `offsets.json` (the 80% interval widths, about 10 KB) comes from the walk-forward
+evaluation, which the job does not run, so it is uploaded to the release by hand and packed in.
 
-**Alternatives.** Uploading trained models to the release instead of training on start (faster start, but
-the hosted model goes stale unless someone re-uploads); keeping the Space awake with a paid tier; Ollama in
-the Space (above).
+**Why no chat.** The agent needs an AI model. The host can't reach Ollama on a laptop or run one in 2.7 GB,
+and an open, unauthenticated chat on a paid API would need a budget and abuse protection. The forecasting and
+recommendation, the evaluated core, work without it; the chat is usable locally and evaluated in
+`evals/reports/`.
 
-**Caveats.** The intervals come from the last evaluation run; if the recipe changes, re-run the evaluation
-and re-upload `offsets.json`. The hosted copy has no rate limit; it has no AI and stores nothing, so the
-cost of abuse is only CPU.
+**Measured.** In a Python 3.12 container capped at 2.7 GB, from an empty disk, installed from
+`requirements.txt` and `packages.txt` as the host does: downloads in about 1 s (from a local copy of the
+release), caught up with the archive by 8 s, then about 600 MB of memory in use while serving.
+
+**Alternatives.** Paying for Hugging Face PRO (everything already built worked unchanged); Render or Fly
+free tiers (memory limits of about 512 MB, and their terms change often); committing the models to git
+(this project never commits data).
+
+**Caveats.** The release URL is fixed to this repository. The models archive is unpacked only if every entry
+is a plain `.json` or `.txt` file under `models/`. If the training recipe changes, re-run the evaluation and
+re-upload `offsets.json`. Community Cloud apps sleep after 12 hours without visitors; the first visitor then
+waits for start-up.
 
 ## Known issues to carry forward
 

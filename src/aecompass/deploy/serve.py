@@ -1,15 +1,15 @@
-"""Start the hosted demo from nothing: fetch the data, train the models, then run the API and the page.
+"""Start the hosted demo from an empty disk: fetch recent data and the trained models, then serve.
 
-    python -m aecompass.deploy.serve            # used by the Hugging Face Space (deploy/space/Dockerfile)
+    streamlit run streamlit_app.py           # Streamlit Community Cloud (the API runs inside the page's process)
+    python -m aecompass.deploy.serve         # any Docker host: API and page as two processes
 
-A free hosted container starts with an empty disk every time it wakes up, and `data/` is never committed.
-So on start-up this:
-  1. downloads the monthly raw snapshot files from the repository's public GitHub Release tagged `data`
-     (the collector workflow keeps them up to date every hour), plus `offsets.json`, the interval widths
-     measured by the evaluation;
-  2. fetches the last two days from the official archive so the newest waits are included;
-  3. trains the forecasting models on everything, with the same recipe as `python -m aecompass.forecast.train`;
-  4. starts the API on an internal port and the web page on the public one.
+A free host starts with an empty disk every time it wakes up, and `data/` is never committed. So on start-up:
+  1. download the last two months of raw snapshots from the repository's public GitHub Release `data`
+     (the hourly collector keeps them current); forecasting needs only the last 35 days;
+  2. fetch the last two days from the official archive, so the newest waits are included;
+  3. download `models.tar.gz` from the same release: the models the weekly `train` workflow fitted on all
+     the history, plus the interval widths from the evaluation. Training is not done here: it needs more
+     memory than the free host has.
 The chat is off (AECOMPASS_CHAT=off): the agent needs a local AI model that the host does not have.
 """
 
@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import gzip
 import importlib.util
+import io
 import os
 import subprocess
 import sys
+import tarfile
+import threading
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -30,16 +33,18 @@ from aecompass.collect import archive
 from aecompass.collect.aed import DEFAULT_ROOT, months_between
 
 RELEASE = os.environ.get("AECOMPASS_DATA_URL", "https://github.com/ChTej00/HK-A-E-Compass/releases/download/data")
-FIRST_MONTH = date(2025, 10, 1)  # the history starts in October 2025 (README "Data sources")
-MODEL_DIR = Path("data/models")
+DATA_DIR = Path("data")
+MODEL_FILES = {"meta.json", "offsets.json"}  # plus one .txt per model, listed in meta.json
 API_PORT = 8000
+HOSTED_DEFAULTS = {"AECOMPASS_CHAT": "off", "AECOMPASS_REFRESH_MINUTES": "15", "AECOMPASS_API_URL": f"http://127.0.0.1:{API_PORT}"}
 
 
-def fetch_release(client: httpx.Client, root: Path = DEFAULT_ROOT, today: date | None = None) -> list[str]:
-    """Download every month's raw file that exists in the release. Returns the months found."""
+def fetch_recent(client: httpx.Client, root: Path = DEFAULT_ROOT, today: date | None = None, days: int = 40) -> list[str]:
+    """Download the raw monthly files covering the last `days` days. Returns the months found."""
+    today = today or archive.now_hkt().date()
     root.mkdir(parents=True, exist_ok=True)
     found = []
-    for month in months_between(FIRST_MONTH, today or archive.now_hkt().date()):
+    for month in months_between(today - timedelta(days=days), today):
         r = client.get(f"{RELEASE}/aed_raw_{month}.jsonl.gz")
         if r.status_code == 404:
             continue
@@ -47,38 +52,60 @@ def fetch_release(client: httpx.Client, root: Path = DEFAULT_ROOT, today: date |
         (root / f"aed_raw_{month}.jsonl").write_bytes(gzip.decompress(r.content))
         found.append(month)
     if not found:
-        raise RuntimeError(f"No raw data found at {RELEASE}")
-    r = client.get(f"{RELEASE}/offsets.json")
-    if r.status_code == 404:
-        raise RuntimeError(
-            f"{RELEASE}/offsets.json is missing. Upload it once from a machine that has run the evaluation: "
-            "gh release upload data data/models/offsets.json --clobber"
-        )
-    r.raise_for_status()
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    (MODEL_DIR / "offsets.json").write_bytes(r.content)
+        raise RuntimeError(f"No recent raw data found at {RELEASE}")
     return found
 
 
+def fetch_models(client: httpx.Client, data_dir: Path = DATA_DIR) -> list[str]:
+    """Download and unpack models.tar.gz into data/models. Only plain files under models/ are accepted."""
+    r = client.get(f"{RELEASE}/models.tar.gz")
+    if r.status_code == 404:
+        raise RuntimeError(f"{RELEASE}/models.tar.gz is missing. Run the train workflow once: gh workflow run train.yml")
+    r.raise_for_status()
+    names = []
+    with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            parts = Path(member.name).parts
+            if member.isdir() and parts == ("models",):
+                continue
+            if not (member.isfile() and len(parts) == 2 and parts[0] == "models" and parts[1].endswith((".json", ".txt"))):
+                raise RuntimeError(f"unexpected entry in models.tar.gz: {member.name!r}")
+            target = data_dir / "models" / parts[1]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(tar.extractfile(member).read())
+            names.append(parts[1])
+    missing = MODEL_FILES - set(names)
+    if missing:
+        raise RuntimeError(f"models.tar.gz has no {', '.join(sorted(missing))}")
+    return sorted(names)
+
+
 def prepare() -> None:
-    from aecompass.forecast import train
     from aecompass.recommend.cli import refresh
 
     t0 = time.time()
     with httpx.Client(follow_redirects=True, timeout=300) as client:
-        months = fetch_release(client)
-    print(f"downloaded {len(months)} months ({months[0]} to {months[-1]}) in {time.time() - t0:.0f}s", flush=True)
+        months = fetch_recent(client)
+        models = fetch_models(client)
+    print(f"downloaded {', '.join(months)} and {len(models)} model files in {time.time() - t0:.0f}s", flush=True)
     refresh()  # newest two days from the official archive, then rebuild the clean table
     print(f"caught up with the archive at {time.time() - t0:.0f}s", flush=True)
-    offsets = (MODEL_DIR / "offsets.json").read_bytes()
-    train.main()  # finds no evaluation predictions here, so it writes an empty offsets.json ...
-    (MODEL_DIR / "offsets.json").write_bytes(offsets)  # ... which is replaced by the measured one
-    print(f"models trained at {time.time() - t0:.0f}s", flush=True)
 
 
-def page_path() -> str:
-    """The Streamlit script, wherever the package is installed (not imported: importing it draws the page)."""
-    return str(Path(importlib.util.find_spec("aecompass.web").submodule_search_locations[0]) / "app.py")
+def use_hosted_defaults() -> None:
+    for key, value in HOSTED_DEFAULTS.items():
+        os.environ.setdefault(key, value)
+
+
+def start_api_thread() -> None:
+    """Run the API inside this process, for hosts that run a single program (Streamlit Community Cloud)."""
+    import uvicorn
+
+    from aecompass.api.app import create_app
+
+    server = uvicorn.Server(uvicorn.Config(create_app(), host="127.0.0.1", port=API_PORT, log_level="warning"))
+    threading.Thread(target=server.run, daemon=True, name="api").start()
+    wait_for_api()
 
 
 def wait_for_api(seconds: int = 300) -> None:
@@ -92,11 +119,15 @@ def wait_for_api(seconds: int = 300) -> None:
     raise RuntimeError("the API did not start")
 
 
+def page_path() -> str:
+    """The Streamlit script, wherever the package is installed (not imported: importing it draws the page)."""
+    return str(Path(importlib.util.find_spec("aecompass.web").submodule_search_locations[0]) / "app.py")
+
+
 def main() -> int:
-    os.environ.setdefault("AECOMPASS_CHAT", "off")
-    os.environ.setdefault("AECOMPASS_REFRESH_MINUTES", "15")
-    os.environ.setdefault("AECOMPASS_API_URL", f"http://127.0.0.1:{API_PORT}")
-    port = os.environ.get("PORT", "7860")  # Hugging Face Spaces expects 7860
+    """Two processes, for a Docker host: the API on an internal port, the page on the public one."""
+    use_hosted_defaults()
+    port = os.environ.get("PORT", "7860")
     prepare()
     api = subprocess.Popen([sys.executable, "-m", "uvicorn", "aecompass.api.app:app", "--host", "127.0.0.1", "--port", str(API_PORT)])
     wait_for_api()

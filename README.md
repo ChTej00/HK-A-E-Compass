@@ -18,7 +18,7 @@ Work in progress. Forecasting, the recommender and the agent are built and evalu
 | M2: forecasting model with intervals | Done |
 | M3: travel times, recommendation engine, basic agent with safety eval | Done |
 | M4: knowledge base with citations, retrieval and agent evals | Done |
-| M5: API, web app, Docker, deployment | In progress: runs locally, not yet hosted |
+| M5: API, web app, Docker, deployment | In progress: runs locally; hosting set up, not yet live |
 
 ## Results so far: forecasting
 
@@ -137,6 +137,7 @@ What does the agent then write? 59 test prompts, local `qwen3:4b`, scored by pat
 - `src/aecompass/agent/`: the tool-using agent and its four safety layers.
 - `src/aecompass/kb/`: the list of official guidance sources, the passage builder and the search.
 - `src/aecompass/api/`, `src/aecompass/web/`: the FastAPI service and the Streamlit page; `Dockerfile`, `docker-compose.yml`.
+- `src/aecompass/deploy/`, `streamlit_app.py`, `.github/workflows/train.yml`: the free hosted demo and its weekly retraining.
 - `evals/`: scripts that generate every number and chart in `evals/reports/`.
 - `docs/data_sources.md`: what each data source really returns, checked by hand.
 - `DECISIONS.md`: why each design choice was made.
@@ -187,17 +188,16 @@ streamlit run src/aecompass/web/app.py
 The chat needs Ollama running on the same computer (`ollama serve`, models from `.env`). Without it the
 board and "Where should I go?" still work, and the chat replies with its fixed safe message.
 
-### Hosting the demo (Hugging Face Spaces, free)
+### Hosting the demo (Streamlit Community Cloud, free)
 
-The hosted copy has no chat and rebuilds its data and models on every start (DECISIONS.md D26).
+The hosted copy has no chat, downloads recent data and the trained models on start-up, and is retrained
+weekly by the `train` workflow (DECISIONS.md D26).
 
 1. Once, upload the interval widths from a machine that has run the evaluation:
    `gh release upload data data/models/offsets.json --clobber`
-2. Create a new Space at huggingface.co: SDK **Docker**, blank template, free CPU.
-3. Upload the two files in `deploy/space/` (`Dockerfile` and `README.md`) to the Space.
-4. The Space builds from this GitHub repository's `master` branch. The first start takes about five
-   minutes while it downloads the data and trains. To update it after pushing to GitHub, use
-   "Factory rebuild" in the Space's settings.
+2. Once, train the first models: `gh workflow run train.yml` (about 10 minutes; it then runs every Monday).
+3. At share.streamlit.io, sign in with GitHub, choose **Create app**, pick this repository, branch `master`,
+   main file `streamlit_app.py`, and under **Advanced settings** choose Python 3.12.
 
 ## A note on what is being forecast
 

@@ -114,17 +114,27 @@ def test_hosted_demo_can_switch_the_chat_off():
         assert c.get("/waits").status_code == 200  # everything else still works
 
 
-def test_hosted_start_up_downloads_every_month_in_the_release(tmp_path, monkeypatch):
+def test_hosted_start_up_downloads_recent_months_and_the_trained_models(tmp_path):
     import gzip
+    import io
+    import tarfile
     from datetime import date
 
     import httpx
 
     from aecompass.deploy import serve
 
-    monkeypatch.chdir(tmp_path)
-    held = {"aed_raw_2025-10.jsonl.gz": gzip.compress(b'{"a": 1}\n'), "aed_raw_2025-12.jsonl.gz": gzip.compress(b'{"b": 2}\n'),
-            "offsets.json": b'{"t45_p50_min_h1": {}}'}
+    def tarball(files):
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+            for name, content in files.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(content)
+                tar.addfile(info, io.BytesIO(content))
+        return buffer.getvalue()
+
+    held = {"aed_raw_2025-12.jsonl.gz": gzip.compress(b'{"b": 2}\n'), "aed_raw_2025-10.jsonl.gz": gzip.compress(b"old"),
+            "models.tar.gz": tarball({"models/meta.json": b"{}", "models/offsets.json": b"{}", "models/t45_p50_min_h1.txt": b"tree"})}
 
     def handle(request):
         name = request.url.path.rsplit("/", 1)[1]
@@ -132,10 +142,16 @@ def test_hosted_start_up_downloads_every_month_in_the_release(tmp_path, monkeypa
 
     client = httpx.Client(transport=httpx.MockTransport(handle))
     root = tmp_path / "raw"
-    assert serve.fetch_release(client, root, today=date(2026, 1, 5)) == ["2025-10", "2025-12"]  # November missing: skipped
-    assert (root / "aed_raw_2025-12.jsonl").read_text() == '{"b": 2}\n'
-    assert (tmp_path / "data/models/offsets.json").read_bytes() == held["offsets.json"]
+    # 40 days back from 5 Jan reaches November (missing: skipped) and December; October is not needed.
+    assert serve.fetch_recent(client, root, today=date(2026, 1, 5)) == ["2025-12"]
+    assert (root / "aed_raw_2025-12.jsonl").read_text() == '{"b": 2}\n' and not (root / "aed_raw_2025-10.jsonl").exists()
+    assert serve.fetch_models(client, tmp_path) == ["meta.json", "offsets.json", "t45_p50_min_h1.txt"]
+    assert (tmp_path / "models/t45_p50_min_h1.txt").read_bytes() == b"tree"
 
-    del held["offsets.json"]
-    with pytest.raises(RuntimeError, match="gh release upload"):
-        serve.fetch_release(client, root, today=date(2026, 1, 5))
+    held["models.tar.gz"] = tarball({"models/meta.json": b"{}", "models/offsets.json": b"{}", "../escape.txt": b"x"})
+    with pytest.raises(RuntimeError, match="unexpected entry"):
+        serve.fetch_models(client, tmp_path)
+    assert not (tmp_path.parent / "escape.txt").exists()
+    del held["models.tar.gz"]
+    with pytest.raises(RuntimeError, match="gh workflow run train.yml"):
+        serve.fetch_models(client, tmp_path)
