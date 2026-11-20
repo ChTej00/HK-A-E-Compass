@@ -1,0 +1,40 @@
+# Run everything with one command:   docker compose up --build
+# Then open http://localhost:8501 (the page) or http://localhost:8000/docs (the API).
+#
+# Needs ./data with the clean table, trained models and knowledge base (see README "Run it").
+# The agent uses Ollama running on this computer, outside the containers; it is optional:
+# without it the board and "Where should I go?" still work and the chat gives its fixed safe message.
+
+services:
+  api:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Inside a container "localhost" is the container itself; this name reaches the computer running it.
+      OLLAMA_HOST: http://host.docker.internal:11434
+      AECOMPASS_REFRESH_MINUTES: "15"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10)"]
+      interval: 30s
+      timeout: 15s
+      start_period: 60s
+      retries: 3
+
+  web:
+    build: .
+    command: ["streamlit", "run", "src/aecompass/web/app.py", "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
+    environment:
+      AECOMPASS_API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy

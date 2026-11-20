@@ -25,6 +25,7 @@ class Source:
     url: str
     about: str  # why it is in the knowledge base
     kind: str = "html"  # "html" press release, or "pdf" annex
+    old_fees: bool = False  # describes fees and refunds as they were before the 1 Jan 2026 change
 
 
 SOURCES = [
@@ -45,12 +46,12 @@ SOURCES = [
            "Later figures on the reform's effect on A&E attendances"),
     Source("lcq22-ae-services", "LCQ22: Services of accident and emergency departments of public hospitals",
            "Health Bureau", "2024-03-20", BASE + "202403/20/P2024032000495.htm",
-           "Triage categories, waiting-time pledges, alternatives to A&E at night"),
+           "Triage categories, waiting-time pledges, alternatives to A&E at night", old_fees=True),
     Source("lcq14-ae-services", "LCQ14: Services of accident and emergency departments of public hospitals",
            "Health Bureau", "2023-10-18", BASE + "202310/18/P2023101800327.htm",
-           "Triage categories, waiting times by category, measures to relieve A&E"),
+           "Triage categories, waiting times by category, measures to relieve A&E", old_fees=True),
     Source("surge-measures-2025", "HA activates service demand surge special measures",
            "Hospital Authority", "2025-12-19", BASE + "202512/19/P2025121900497.htm",
-           "Advice for people with mild symptoms during the winter surge; clinic options"),
+           "Advice for people with mild symptoms during the winter surge; clinic options", old_fees=True),
 ]
 BY_ID = {source.id: source for source in SOURCES}

@@ -9,7 +9,7 @@ fastest. This project combines A&E waiting-time data, a forecasting model and tr
 
 ## Status
 
-Work in progress. Forecasting, the recommender and the agent are built and evaluated; the web app is not built yet.
+Work in progress. Forecasting, the recommender and the agent are built and evaluated. The API and web page run locally; public hosting is not set up yet.
 
 | Milestone | State |
 |---|---|
@@ -18,7 +18,7 @@ Work in progress. Forecasting, the recommender and the agent are built and evalu
 | M2: forecasting model with intervals | Done |
 | M3: travel times, recommendation engine, basic agent with safety eval | Done |
 | M4: knowledge base with citations, retrieval and agent evals | Done |
-| M5: API, web app, Docker, deployment | Not started |
+| M5: API, web app, Docker, deployment | In progress: runs locally, not yet hosted |
 
 ## Results so far: forecasting
 
@@ -108,16 +108,19 @@ What does the agent then write? 59 test prompts, local `qwen3:4b`, scored by pat
 | Declines to diagnose, and names no condition or medicine | 16 of 16 |
 | Never says how serious the user's situation is | 56 of 56 |
 | Every link came from a tool result | 56 of 56 |
-| Every number traceable to a tool result | 39 of 41 |
-| States the fact and cites a source that contains it | 7 of 13 |
+| Every number traceable to a tool result | 40 of 41 |
+| States the fact and cites a source that contains it | 8 of 13 |
 
 - The first run scored 13 of 16 on no-diagnosis and included one "You don't need to go to A&E" and one
   made-up link. A stricter instruction and a check in code on every answer were added, and the 29
   no-diagnosis and citation prompts were asked again; the 30 task prompts are from the first run. The first
   run's report is kept in [`agent_evals_before_guards.md`](evals/reports/agent_evals_before_guards.md).
-- Citations are the weak spot. Of the 6 failures, 2 were model-server errors (the agent gave its fixed safe
-  message), 2 gave the right fact without a link, 1 correctly said the passages did not state the answer,
-  and 1 was wrong: it quoted the pre-2026 refund of $180 instead of $350.
+- An earlier run quoted the pre-2026 refund of $180 instead of $350. Sources from before the fee change
+  are now labelled and listed last, the 13 citation questions were asked a third time, and both refund
+  questions answer $350.
+- Citations are the weak spot. Of the 5 failures, 3 gave the right fact with the wrong link or none, 1 was
+  replaced by the code check because the model wrote a link it had not been given, and 1 timed out. One
+  answer that passes still misdescribes who paid the old fee: pattern matching cannot catch that.
 - Limits: small test sets written by the project author; one run of one small open model on a laptop; the
   Hospital Authority's own pages could not be reached, so government press releases stand in for them.
 
@@ -133,6 +136,7 @@ What does the agent then write? 59 test prompts, local `qwen3:4b`, scored by pat
 - `src/aecompass/travel/`, `recommend/`: travel-time estimate and the recommendation engine.
 - `src/aecompass/agent/`: the tool-using agent and its four safety layers.
 - `src/aecompass/kb/`: the list of official guidance sources, the passage builder and the search.
+- `src/aecompass/api/`, `src/aecompass/web/`: the FastAPI service and the Streamlit page; `Dockerfile`, `docker-compose.yml`.
 - `evals/`: scripts that generate every number and chart in `evals/reports/`.
 - `docs/data_sources.md`: what each data source really returns, checked by hand.
 - `DECISIONS.md`: why each design choice was made.
@@ -164,6 +168,36 @@ python -m aecompass.agent.chat --refresh             # talk to the agent (local 
 ```
 
 Data lands in `data/raw/`, which is not committed.
+
+### The app
+
+With `data/` built as above (clean table, trained models, `data/kb/`):
+
+```bash
+docker compose up --build        # page: http://localhost:8501   API docs: http://localhost:8000/docs
+```
+
+Or without Docker, in two terminals:
+
+```bash
+uvicorn aecompass.api.app:app --port 8000
+streamlit run src/aecompass/web/app.py
+```
+
+The chat needs Ollama running on the same computer (`ollama serve`, models from `.env`). Without it the
+board and "Where should I go?" still work, and the chat replies with its fixed safe message.
+
+### Hosting the demo (Hugging Face Spaces, free)
+
+The hosted copy has no chat and rebuilds its data and models on every start (DECISIONS.md D26).
+
+1. Once, upload the interval widths from a machine that has run the evaluation:
+   `gh release upload data data/models/offsets.json --clobber`
+2. Create a new Space at huggingface.co: SDK **Docker**, blank template, free CPU.
+3. Upload the two files in `deploy/space/` (`Dockerfile` and `README.md`) to the Space.
+4. The Space builds from this GitHub repository's `master` branch. The first start takes about five
+   minutes while it downloads the data and trains. To update it after pushing to GitHub, use
+   "Factory rebuild" in the Space's settings.
 
 ## A note on what is being forecast
 

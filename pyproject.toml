@@ -19,10 +19,13 @@ dependencies = [
     "scikit-learn>=1.4",
     "anthropic>=2.8",
     "pypdf>=4",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+app = ["streamlit>=1.40"]  # the web page; the API itself needs only the packages above
 
 [tool.setuptools.packages.find]
 where = ["src"]

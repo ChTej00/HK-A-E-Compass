@@ -21,6 +21,7 @@ Two ways of matching are provided behind the same `search(query, k)` method:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,10 +81,12 @@ class KeywordSearch(_Base):
 class EmbeddingSearch(_Base):
     min_score = 0.3
 
-    def __init__(self, chunks: list[dict], model: str = "bge-m3", host: str = "http://localhost:11434",
+    def __init__(self, chunks: list[dict], model: str = "bge-m3", host: str | None = None,
                  cache: Path | None = None, client: httpx.Client | None = None):
         super().__init__(chunks)
         self.model, self.name = model, f"embedding ({model})"
+        host = host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")  # same setting as the chat model
+        host = host if host.startswith("http") else f"http://{host}"
         self.http = client or httpx.Client(base_url=host, timeout=httpx.Timeout(600, connect=5))
         cache = cache or CHUNKS_PATH.with_name(f"embeddings_{model.replace(':', '_').replace('/', '_')}.npy")
         if cache.exists() and len(np.load(cache)) == len(chunks):

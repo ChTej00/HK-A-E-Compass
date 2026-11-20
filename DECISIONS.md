@@ -161,7 +161,7 @@ model's 4,096-token window would otherwise cut the oldest text first, which is t
 the screen reads only the newest message, so an emergency that only becomes clear across several messages
 relies on the main agent's instructions. The Cantonese prompts were not written by a native speaker.
 
-## D8. Hosting: Hugging Face Spaces with Docker (14 Nov 2026) *(planned, M5)*
+## D8. Hosting: Hugging Face Spaces with Docker (14 Nov 2026; built 20 Nov, see D26)
 
 **What.** One free Docker Space running FastAPI and Streamlit together.
 
@@ -494,6 +494,110 @@ symptoms before the model sees it (would also block ordinary "where is quickest"
 **Caveats.** The guard is a pattern list, like layer 1, so it only catches wording it knows. One run each,
 one small model, test prompts written by the project author.
 
+## D23. Sources from before the 2026 fee change are labelled and listed last (17 Nov 2026)
+
+**What.** Three sources (the 2023 and 2024 A&E service replies and the December 2025 surge notice) carry
+`old_fees=True` in `src/aecompass/kb/sources.py`. The search tool lists passages from current sources first
+and attaches a warning to each older passage: its fee and refund amounts are out of date and must not be
+given as current.
+
+**Why.** In the second agent evaluation the agent told a user the refund for leaving A&E was $180. That was
+the amount before 1 January 2026; it is now $350. The tool had returned old and new passages with only a
+date to tell them apart, and a small model did not use the date.
+
+**Result** (`evals/reports/agent_evals.md`). The 13 citation questions were asked again. Both refund
+questions (English and Cantonese) now answer $350 and cite the January 2026 release. Citations overall went
+from 7 of 13 to 8 of 13, which is within run-to-run noise for 13 questions. The five that still fail:
+- two fee answers state $400 correctly but link the press release, not the fee table attached to it, which
+  is the document that contains the figure;
+- one names the right source for the doctor directory but gives no link to it;
+- one (Category III target) was replaced by the answer guard because the model wrote a link that was in no
+  tool result, which is the guard doing its job;
+- one (Category II target) timed out on the laptop and got the fixed safe message.
+
+One answer the scorer passes is still muddled: asked what A&E cost before the reform, the agent gave $180
+(right) but said it applied to "non-urgent and semi-urgent patients" who are "now fully exempted" (wrong: it
+was the fee for everyone, and it is critical and emergency patients who are now exempt). Pattern matching
+cannot see that kind of error. It needs a person, or a stronger model, to read the answers.
+
+**Alternatives.** Deleting the older sources (they are the only ones that list the five triage categories
+and the waiting-time targets); filtering old passages out of fee questions only (needs code to decide what
+counts as a fee question); splitting the knowledge base in two (more to maintain for 86 passages).
+
+**Caveats.** The flag is set by hand per source. The warning is attached even when the question is about
+triage, where the older source is still right; the wording limits it to fee and refund amounts.
+
+## D24. The API wraps the agent's tools; the web page only talks to the API (20 Nov 2026)
+
+**What.** `src/aecompass/api/app.py` is a FastAPI service with five endpoints: `GET /health`, `GET /waits`
+(every A&E now and +1/+2/+3 h), `GET /forecast/{hospital}`, `POST /recommend` and `POST /chat`. Each one
+calls the same `Toolbox` methods the agent's tools call. The Streamlit page (`src/aecompass/web/app.py`)
+holds no data or models; it calls the API over HTTP. A background thread in the API downloads the newest
+published waits every 15 minutes (`AECOMPASS_REFRESH_MINUTES`) and swaps them in.
+
+**Why.** One code path for every number: the page, the API and the agent cannot disagree about a wait,
+because they all read it from the same function. Keeping the page thin means a second client (a phone app,
+an MCP server, the brief's stretch goal) needs no changes to the model code.
+
+**Privacy choices.** Places and chat messages go in the request body (POST), never the URL, because web
+servers log URLs. The server keeps no chat history: the browser sends the conversation with each message
+and the server forgets it after replying. A test checks that nothing the user types reaches the logs.
+Fixed safety replies (999, crisis lines) are not added to the conversation sent to the model.
+
+**Alternatives.** Streamlit calling the Python functions directly (simpler, but then there is no API to
+show, and the page and the models must share one process); keeping chat history on the server in a session
+store (needs storage of health-related text, which the rules forbid).
+
+**Caveats.** `/chat` answers take minutes with the local model, so the page waits up to 15 minutes. There is
+no rate limit or authentication; that matters only once it is public (D8).
+
+## D25. Docker: one image, two containers, data mounted rather than built in (20 Nov 2026)
+
+**What.** One `Dockerfile` (Python 3.12 slim) builds an image with the package installed. `docker compose up`
+runs it twice: the API on port 8000 and the page on port 8501. `./data` is mounted into the API container.
+The local Ollama server stays outside Docker and is reached at `host.docker.internal`.
+
+**Why.** "Runs with one command" (brief 4.6) without copying data into the image: `data/` is never
+committed, and a mounted folder lets the API's refresh write new snapshots that survive a restart.
+Dependencies are installed in their own layer, so editing code rebuilds in seconds. The container runs as
+a normal user, not root.
+
+**Alternatives.** Two images (smaller each, more to maintain); running Ollama in a container too (would
+need about 4 GB more memory on an 8 GB laptop, and GPU passthrough differs by machine); baking data and
+models into the image (needed for hosting, see D8, but would put data in every local build).
+
+## D26. The hosted demo has no chat, and rebuilds its data and models on every start (20 Nov 2026)
+
+**What.** The public copy on a free Hugging Face Space runs with `AECOMPASS_CHAT=off`: the live board and
+"Where should I go?" work, and the chat tab explains that the assistant runs only locally. On every start,
+`python -m aecompass.deploy.serve` downloads the raw monthly files and `offsets.json` from the public GitHub
+Release `data`, fetches the last two days from the official archive, trains the models with the usual
+recipe, then starts the API (internal port 8000) and the page (public port 7860). The Space's Dockerfile
+(`deploy/space/`) clones the public GitHub repository, so it always builds from the committed code.
+
+**Why no chat.** The agent needs an AI model. The free host can't reach Ollama on a laptop; running Ollama
+inside the Space would fit in memory but answer in minutes, and an open, unauthenticated chat could be
+abused; a paid API needs a key and a budget. The forecasting and recommendation, which are the evaluated
+core, work without it. The chat stays fully usable locally, and its evaluations are in `evals/reports/`.
+
+**Why rebuild on start.** A free Space's disk is wiped when it sleeps, and `data/` is never committed. The
+release is already kept current by the hourly collector, so the Space needs no extra pipeline, and its
+models are retrained on all the data up to the moment it starts. `offsets.json` (the 80% interval widths,
+about 10 KB) can't be rebuilt there, because it comes from the walk-forward evaluation, so it is uploaded
+to the release by hand and downloaded with the data.
+
+**Measured.** In a local container starting from an empty disk: data downloaded in about 1 s (from a local
+copy of the release), caught up with the archive by 19 s, models trained by 284 s, page up straight after.
+A free Space's CPU may be slower. The first visitor after the Space has slept waits for this.
+
+**Alternatives.** Uploading trained models to the release instead of training on start (faster start, but
+the hosted model goes stale unless someone re-uploads); keeping the Space awake with a paid tier; Ollama in
+the Space (above).
+
+**Caveats.** The intervals come from the last evaluation run; if the recipe changes, re-run the evaluation
+and re-upload `offsets.json`. The hosted copy has no rate limit; it has no AI and stores nothing, so the
+cost of abuse is only CPU.
+
 ## Known issues to carry forward
 
 - **Fee change inside the training window.** The A&E charge rose from $180 to $400 on 1 Jan 2026 (triage I
@@ -503,4 +607,6 @@ one small model, test prompts written by the project author.
 - **HA pages for the knowledge base** couldn't be read from the dev machine. Government press releases and
   the HA fee table are used instead (D21).
 - **Old and new fee rules sit side by side in the knowledge base.** The agent once quoted the pre-2026 $180
-  refund (D22). Options: drop superseded passages, or rank newer sources first.
+  refund (D22). Older sources are now labelled and listed last (D23).
+- **The agent's guidance answers have only been checked by pattern matching.** At least one passing answer
+  misreads its source (D23). Read the transcripts by hand before the demo.

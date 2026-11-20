@@ -239,3 +239,23 @@ def test_answer_guard_lets_good_answers_through():
     assert safety.check_answer("The fee is $400 (https://www.info.gov.hk/gia/general/202601/01/P2026010100712.htm).", [source]) is None
     assert safety.check_answer("There is a directory at https://www.pcdirectory.gov.hk/.", [source]) is None
     assert safety.check_answer("See https://example.com/fees", [source]) == "invented link"
+
+
+# --- the guidance tool labels sources that predate the 2026 fee change --------------------------------
+
+
+def test_guidance_tool_lists_current_sources_first_and_warns_about_old_fees():
+    from aecompass.agent.tools import OLD_FEES_WARNING, Toolbox
+    from aecompass.kb.search import Hit
+    from aecompass.kb.sources import BY_ID
+
+    class FakeSearch:
+        def search(self, query, k):
+            order = ["lcq22-ae-services", "fee-reform-day1", "surge-measures-2025", "fee-list-2026"]
+            return [Hit(f"{sid}-0", BY_ID[sid], f"text from {sid}", 1.0) for sid in order]
+
+    result = Toolbox(None, None, None, None, FakeSearch()).search_triage_guidance("refund")
+    titles = [p["source_title"] for p in result["passages"]]
+    assert titles == [BY_ID[s].title for s in ["fee-reform-day1", "fee-list-2026", "lcq22-ae-services", "surge-measures-2025"]]
+    assert ["warning" in p for p in result["passages"]] == [False, False, True, True]
+    assert result["passages"][2]["warning"] == OLD_FEES_WARNING and "without a warning" in result["note"]

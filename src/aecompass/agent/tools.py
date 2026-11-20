@@ -97,6 +97,12 @@ TOOL_SPECS = [
 ]
 
 
+OLD_FEES_WARNING = (
+    "Published before the A&E fee change of 1 January 2026. Any fee or refund amount in this passage is "
+    "out of date. Do not give it as the current amount."
+)
+
+
 @dataclass
 class Toolbox:
     """Holds the data the tools need, loaded once."""
@@ -109,11 +115,14 @@ class Toolbox:
     _cache: dict = field(default_factory=dict)
 
     @classmethod
-    def load(cls) -> "Toolbox":
-        chunks = load_chunks()
-        embed_model = os.environ.get("AECOMPASS_EMBED_MODEL")
-        # Embedding search alone beat both keyword and hybrid search on the retrieval eval (retrieval.md).
-        searcher = EmbeddingSearch(chunks, embed_model) if embed_model else KeywordSearch(chunks)
+    def load(cls, with_search: bool = True) -> "Toolbox":
+        """`with_search=False` skips the guidance search, which only the chat uses (the hosted demo has none)."""
+        searcher = None
+        if with_search:
+            chunks = load_chunks()
+            embed_model = os.environ.get("AECOMPASS_EMBED_MODEL")
+            # Embedding search alone beat both keyword and hybrid search on the retrieval eval (retrieval.md).
+            searcher = EmbeddingSearch(chunks, embed_model) if embed_model else KeywordSearch(chunks)
         return cls(load_clean(), load_models(), hospitals.load(), holidays.load(), searcher)
 
     def search_triage_guidance(self, query: str) -> dict:
@@ -121,21 +130,36 @@ class Toolbox:
         if not hits:
             return {"passages": [], "note": "Nothing relevant was found in the official sources. Say you do not "
                                             "have official information on this; do not answer from memory."}
+        # A&E fees changed on 1 Jan 2026. Older sources are still right about triage, but any fee or refund
+        # they mention is out of date, so they are listed last and labelled.
+        hits = sorted(hits, key=lambda h: h.source.old_fees)  # stable: keeps the search order within each group
+        passages = []
+        for h in hits:
+            passage = {"source_title": h.source.title, "publisher": h.source.publisher, "published": h.source.date,
+                       "url": h.source.url, "text": h.text}
+            if h.source.old_fees:
+                passage["warning"] = OLD_FEES_WARNING
+            passages.append(passage)
         return {
-            "passages": [
-                {"source_title": h.source.title, "publisher": h.source.publisher, "published": h.source.date,
-                 "url": h.source.url, "text": h.text}
-                for h in hits
-            ],
+            "passages": passages,
             "note": "Answer only from these passages. Name the source title and give its URL for each fact you "
                     "use. If the passages do not answer the question, say so. Rules and fees can change after "
-                    "the publication date.",
+                    "the publication date. For any fee or refund amount, use only passages without a warning.",
         }
 
     def _forecasts(self, target: str) -> tuple[pd.Timestamp, dict[str, Forecast]]:
-        if target not in self._cache:
-            self._cache[target] = forecast_latest(self.clean, self.models, target, self.holiday_map)
-        return self._cache[target]
+        # Read the cache once: the web server may swap in a new one (reload) while a request is running.
+        cache = self._cache
+        if target not in cache:
+            cache[target] = forecast_latest(self.clean, self.models, target, self.holiday_map)
+        return cache[target]
+
+    def reload(self, clean: pd.DataFrame) -> None:
+        """Use newer published waits. Forecasts are recomputed on the next request."""
+        self.clean, self._cache = clean, {}
+
+    def data_time(self) -> pd.Timestamp:
+        return self._forecasts(NON_URGENT)[0]
 
     def _stamp(self, as_of: pd.Timestamp) -> dict:
         age = (archive.now_hkt() - as_of.to_pydatetime()).total_seconds() / 60
@@ -157,6 +181,7 @@ class Toolbox:
         r = lambda v: round(float(v))
         return {
             "start_matched_to": f"{start.matched_name} ({start.district})",
+            "start_point": [round(start.lat, 5), round(start.lon, 5)],
             **self._stamp(as_of),
             "options_soonest_first": [
                 {
@@ -185,6 +210,26 @@ class Toolbox:
                 for name, f in sorted(non_urgent.items())
             },
         }
+
+    def board(self) -> dict:
+        """Every A&E: published waits now and the forecast for the next three hours. For the web page, not the model."""
+        as_of, non_urgent = self._forecasts(NON_URGENT)
+        _, urgent = self._forecasts(URGENT)
+        rows = []
+        for name, f in sorted(non_urgent.items()):
+            lat, lon = self.coords.get(name, (None, None))
+            rows.append({
+                "hospital": name,
+                "lat": lat,
+                "lon": lon,
+                "urgent_triage_3_now_min": round(urgent[name].now) if name in urgent else None,
+                "now_min": round(f.now),
+                "forecast": [
+                    {"hours_ahead": h, "wait_min": round(f.pred[h - 1]), "range_min": [round(f.lo[h - 1]), round(f.hi[h - 1])]}
+                    for h in (1, 2, 3)
+                ],
+            })
+        return {**self._stamp(as_of), "hospitals": rows, "no_current_wait": sorted(set(self.coords) - set(non_urgent))}
 
     def forecast_wait(self, hospital: str) -> dict:
         as_of, forecasts = self._forecasts(NON_URGENT)

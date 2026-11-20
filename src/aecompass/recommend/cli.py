@@ -40,6 +40,7 @@ def refresh() -> None:
     today = archive.now_hkt().date()
     aed.collect(today - timedelta(days=1), today, RawStore(aed.DEFAULT_ROOT, aed.PREFIX), verbose=False)
     df, _ = build.tidy(build.load_raw(build.RAW_ROOT)[0])
+    build.CLEAN_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(build.CLEAN_PATH, index=False)
 
 

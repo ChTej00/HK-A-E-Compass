@@ -1,0 +1,15 @@
+# Keep the image small and free of secrets and data.
+.git
+.venv
+.env
+data
+evals
+tests
+notebooks
+docs
+**/__pycache__
+*.egg-info
+.pytest_cache
+.claude
+CLAUDE.md
+*.log
