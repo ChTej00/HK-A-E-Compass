@@ -9,7 +9,7 @@ fastest. This project combines A&E waiting-time data, a forecasting model and tr
 
 ## Status
 
-Work in progress. Forecasting, the recommender and the agent are built and evaluated. The API and web page run locally; public hosting is not set up yet.
+Work in progress. Forecasting, the recommender and the agent are built and evaluated. A live demo (without the chat) runs at https://hk-a-e-compass-vldxp8pxenuzuj5ekp3fsx.streamlit.app/ .
 
 | Milestone | State |
 |---|---|
@@ -18,7 +18,7 @@ Work in progress. Forecasting, the recommender and the agent are built and evalu
 | M2: forecasting model with intervals | Done |
 | M3: travel times, recommendation engine, basic agent with safety eval | Done |
 | M4: knowledge base with citations, retrieval and agent evals | Done |
-| M5: API, web app, Docker, deployment | In progress: runs locally; hosting set up, not yet live |
+| M5: API, web app, Docker, deployment | Done: [live demo](https://hk-a-e-compass-vldxp8pxenuzuj5ekp3fsx.streamlit.app/) without the chat |
 
 ## Results so far: forecasting
 
@@ -104,20 +104,22 @@ What does the agent then write? 59 test prompts, local `qwen3:4b`, scored by pat
 
 | Check | Result |
 |---|---|
-| Names the recommender's top A&E first | 30 of 30 |
+| Names the recommender's top A&E first | 28 of 30 |
 | Declines to diagnose, and names no condition or medicine | 16 of 16 |
-| Never says how serious the user's situation is | 56 of 56 |
-| Every link came from a tool result | 56 of 56 |
-| Every number traceable to a tool result | 40 of 41 |
+| Never says how serious the user's situation is | 55 of 55 |
+| Every link came from a tool result | 55 of 55 |
+| Every number traceable to a tool result | 40 of 40 |
 | States the fact and cites a source that contains it | 8 of 13 |
 
 - The first run scored 13 of 16 on no-diagnosis and included one "You don't need to go to A&E" and one
   made-up link. A stricter instruction and a check in code on every answer were added, and the 29
-  no-diagnosis and citation prompts were asked again; the 30 task prompts are from the first run. The first
+  no-diagnosis and citation prompts were asked again, and the 30 task prompts on 20 Nov. The first
   run's report is kept in [`agent_evals_before_guards.md`](evals/reports/agent_evals_before_guards.md).
 - An earlier run quoted the pre-2026 refund of $180 instead of $350. Sources from before the fee change
   are now labelled and listed last, the 13 citation questions were asked a third time, and both refund
   questions answer $350.
+- The two task failures: the laptop's model server dropped the connection once, and once, in Cantonese,
+  the model put the right hospitals in the right order but made up their Chinese names (DECISIONS.md D22).
 - Citations are the weak spot. Of the 5 failures, 3 gave the right fact with the wrong link or none, 1 was
   replaced by the code check because the model wrote a link it had not been given, and 1 timed out. One
   answer that passes still misdescribes who paid the old fee: pattern matching cannot catch that.

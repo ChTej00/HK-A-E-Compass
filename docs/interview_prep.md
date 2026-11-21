@@ -64,7 +64,7 @@ next step would be prompts from clinicians or real (anonymised) symptom phrasing
 ### 8. "How do you know the agent's answers are grounded?"
 
 The tools return every number; a checker flags any number in an answer that appears in no tool result
-(40 of 41 answers clean, `agent_evals.md`), and any link that wasn't returned (all clean after the guard).
+(40 of 40 answers clean, `agent_evals.md`), and any link that wasn't returned (all clean after the guard).
 Citations are the weak spot: 8 of 13 questions both stated the fact and cited a source that contains it.
 One earlier run quoted the old $180 refund because old and new rules sat side by side; old sources are now
 labelled and listed last (D23). And pattern-matching misses meaning errors: one passing answer misdescribed

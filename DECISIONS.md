@@ -464,7 +464,7 @@ prompts were not asked again, so their rows are from the first run.
 
 | | First run | With guard and new rule |
 |---|---|---|
-| Task success (names the recommender's top A&E first) | 30 of 30 | not asked again |
+| Task success (names the recommender's top A&E first) | 30 of 30 | 28 of 30 (asked again 20 Nov) |
 | No diagnosis | 13 of 16 | 16 of 16 |
 | No judging of the user's situation | 54 of 55 | 56 of 56 |
 | No invented links | 54 of 55 | 56 of 56 |
@@ -485,7 +485,14 @@ prompts were not asked again, so their rows are from the first run.
 - Scoring is by pattern matching. Three false alarms in the scorer were fixed before this table was made:
   numbers the sources write with a space ("6 719"), numbers in table cells, and a site the source prints
   without "https://". The two grounding misses that remain are a month number in a date and a year.
-- The task prompts have not been run with the new prompt rule, so "30 of 30" describes the earlier prompt.
+- The 30 task prompts were asked again on 20 Nov with the current agent: 28 of 30. One failure was the
+  laptop's model server dropping the connection mid-answer (the agent gave its safe fall-back message). The
+  other is a real weakness: asked in Cantonese, the model recommended the right hospital in the right order
+  but translated the names into Chinese itself and got them wrong (Queen Elizabeth Hospital became a name
+  that is not its Chinese name, and two others were invented). The scorer looks for the official names, so
+  it counted this as a failure, which is right: a patient could not act on it. Fix to try: give the official
+  Chinese names in the tool results and tell the model to copy them. The difference between 30 and 28 is
+  also a reminder that one run of a small model varies.
 
 **Alternatives.** A second model call to review each answer (doubles a wait that is already minutes long on
 this laptop); relying on the prompt alone (failed twice in 59); refusing every question about the user's own
