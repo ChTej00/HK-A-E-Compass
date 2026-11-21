@@ -112,6 +112,7 @@ class Toolbox:
     coords: dict[str, tuple[float, float]]
     holiday_map: dict
     searcher: object = None  # anything with .search(query, k); see kb/search.py
+    zh_names: dict = field(default_factory=dict)  # official Chinese names, so the model never translates them
     _cache: dict = field(default_factory=dict)
 
     @classmethod
@@ -123,7 +124,7 @@ class Toolbox:
             embed_model = os.environ.get("AECOMPASS_EMBED_MODEL")
             # Embedding search alone beat both keyword and hybrid search on the retrieval eval (retrieval.md).
             searcher = EmbeddingSearch(chunks, embed_model) if embed_model else KeywordSearch(chunks)
-        return cls(load_clean(), load_models(), hospitals.load(), holidays.load(), searcher)
+        return cls(load_clean(), load_models(), hospitals.load(), holidays.load(), searcher, hospitals.chinese_names())
 
     def search_triage_guidance(self, query: str) -> dict:
         hits = self.searcher.search(query, 4)
@@ -186,6 +187,7 @@ class Toolbox:
             "options_soonest_first": [
                 {
                     "hospital": o.hospital,
+                    "hospital_zh": self.zh_names.get(o.hospital),
                     "travel_min": r(o.travel_min),
                     "wait_on_arrival_min": r(o.wait_min),
                     "wait_range_min": [r(o.wait_low), r(o.wait_high)],
@@ -204,6 +206,7 @@ class Toolbox:
             **self._stamp(as_of),
             "waits_min": {
                 name: {
+                    "hospital_zh": self.zh_names.get(name),
                     "non_urgent_triage_4_5": round(f.now),
                     "urgent_triage_3": round(urgent[name].now) if name in urgent else None,
                 }
@@ -241,6 +244,7 @@ class Toolbox:
         f = forecasts[found[0]]
         return {
             "hospital": found[0],
+            "hospital_zh": self.zh_names.get(found[0]),
             "category": TARGETS[NON_URGENT],
             **self._stamp(as_of),
             "now_min": round(f.now),

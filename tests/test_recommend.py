@@ -108,3 +108,27 @@ def test_keyword_search_returns_the_matching_passage_with_its_source():
     assert hit.chunk_id == "lcq22-ae-services#0" and hit.source.url.startswith("https://www.info.gov.hk/")
     assert search.search("refund if I leave", 1)[0].source.id == "fee-reform-day1"
     assert search.search("capital of France") == []  # nothing relevant: return nothing, not the least-bad passage
+
+
+def test_geocode_tries_again_when_the_connection_drops(monkeypatch):
+    import httpx
+
+    from aecompass.geo import geocode as geo
+
+    monkeypatch.setattr(geo.time, "sleep", lambda s: None)
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        if len(calls) < 3:
+            raise httpx.ConnectError("connection reset")
+        return httpx.Response(200, json={"SuggestedAddress": []})
+
+    assert geo.geocode("Langham Place", client=httpx.Client(transport=httpx.MockTransport(handle))) == []
+    assert len(calls) == 3
+
+    def always_down(request):
+        raise httpx.ConnectError("down")
+
+    with pytest.raises(httpx.ConnectError):  # gives up after three tries
+        geo.geocode("Langham Place", client=httpx.Client(transport=httpx.MockTransport(always_down)))

@@ -9,6 +9,7 @@ Callers should show the matched name back to the user so a wrong match is visibl
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -56,7 +57,14 @@ def parse(query: str, payload: dict) -> list[Place]:
 def geocode(query: str, n: int = 3, client: httpx.Client | None = None) -> list[Place]:
     """Best matches first. Empty list if nothing was found."""
     get = (client or httpx).get
-    r = get(URL, params={"q": query, "n": n}, headers=HEADERS, timeout=30, follow_redirects=True)
+    for attempt in range(3):  # the service sometimes drops a connection; a second try usually works
+        try:
+            r = get(URL, params={"q": query, "n": n}, headers=HEADERS, timeout=30, follow_redirects=True)
+            break
+        except httpx.TransportError:
+            if attempt == 2:
+                raise
+            time.sleep(1 + attempt)
     r.raise_for_status()
     return parse(query, r.json())
 

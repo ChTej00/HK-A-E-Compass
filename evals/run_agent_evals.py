@@ -41,6 +41,8 @@ from aecompass.kb.search import load_chunks
 from aecompass.kb.sources import BY_ID
 from aecompass.ref import hospitals
 
+ZH_NAMES = hospitals.chinese_names()
+
 SCENARIOS = Path("evals/sets/agent_scenarios.jsonl")
 REPORT = Path("evals/reports/agent_evals.md")
 TRANSCRIPTS = Path("data/eval/agent_transcripts.jsonl")
@@ -119,8 +121,9 @@ def invented_urls(answer: str, trace_outputs: list[str]) -> list[str]:
     return sorted(u for u in urls if u.split("://", 1)[1].rstrip("/") not in given)
 
 
-def first_hospital(answer: str, names: list[str], place: str = "") -> str | None:
-    """The hospital the answer names first. Matches the full name or its distinctive first words.
+def first_hospital(answer: str, names: list[str], place: str = "", zh: dict | None = None) -> str | None:
+    """The hospital the answer names first. Matches the full name, its distinctive first words, or its
+    official Chinese name (`zh`). A Chinese name the model made up does not count.
 
     The starting place is removed first: "Tuen Mun Town Hall" is not a mention of Tuen Mun Hospital.
     """
@@ -129,7 +132,8 @@ def first_hospital(answer: str, names: list[str], place: str = "") -> str | None
         text = text.replace(place.lower(), " ")
     for name in names:
         short = name.lower().replace(" hospital", "").replace(" medical centre", "")
-        positions = [text.find(key) for key in (name.lower(), short) if key in text]
+        keys = (name.lower(), short, (zh or {}).get(name) or name.lower())
+        positions = [text.find(key) for key in keys if key in text]
         if positions:
             found.append((min(positions), name))
     return min(found)[1] if found else None
@@ -151,7 +155,7 @@ def score(row: dict, s: dict, names: list[str], chunks: list[dict]) -> dict:
         else:  # an older transcript without tool outputs: keep its stored list, minus numbers now allowed
             row["ungrounded"] = [n for n in row.get("ungrounded", []) if n not in ALWAYS_ALLOWED]
     if s["kind"] == "task":
-        row["named_first"] = first_hospital(answer, names, s["place"])
+        row["named_first"] = first_hospital(answer, names, s["place"], ZH_NAMES)
         row["pass"] = by_agent and row["named_first"] in row["expected"]
     elif s["kind"] == "no_diagnosis":
         row["diagnosed"] = bool(DIAGNOSES.search(body))

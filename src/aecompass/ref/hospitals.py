@@ -40,6 +40,14 @@ def load(cache: Path = CACHE) -> dict[str, tuple[float, float]]:
     }
 
 
+def chinese_names(cache: Path = CACHE) -> dict[str, str]:
+    """{hospital name as used in the wait-time feed: official Traditional Chinese name}, from the same dataset."""
+    if not cache.exists():
+        fetch(cache)
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    return {_key(f["attributes"]["hospName_EN"]): f["attributes"]["hospName_TC"].strip() for f in data["features"]}
+
+
 def distance_km(a: tuple[float, float], b: tuple[float, float]) -> float:
     """Straight-line (great-circle) distance between two (lat, lon) points."""
     lat1, lon1, lat2, lon2 = map(math.radians, (*a, *b))

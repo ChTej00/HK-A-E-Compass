@@ -7,6 +7,10 @@ fastest. This project combines A&E waiting-time data, a forecasting model and tr
 > **Not medical advice. Not an official Hospital Authority service.** For non-life-threatening situations only.
 > In an emergency call **999**.
 
+![The live board: published non-urgent waits now and forecast for the next three hours at every public A&E, with 80% ranges, and a map](docs/img/live_board.png)
+
+*The [live demo](https://hk-a-e-compass-vldxp8pxenuzuj5ekp3fsx.streamlit.app/) on Sat 21 Nov 2026, 22:45 HKT. Waits are HA's published estimates, not measured waits.*
+
 ## Status
 
 Work in progress. Forecasting, the recommender and the agent are built and evaluated. A live demo (without the chat) runs at https://hk-a-e-compass-vldxp8pxenuzuj5ekp3fsx.streamlit.app/ .

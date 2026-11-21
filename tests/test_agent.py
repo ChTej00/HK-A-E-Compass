@@ -259,3 +259,29 @@ def test_guidance_tool_lists_current_sources_first_and_warns_about_old_fees():
     assert titles == [BY_ID[s].title for s in ["fee-reform-day1", "fee-list-2026", "lcq22-ae-services", "surge-measures-2025"]]
     assert ["warning" in p for p in result["passages"]] == [False, False, True, True]
     assert result["passages"][2]["warning"] == OLD_FEES_WARNING and "without a warning" in result["note"]
+
+
+# --- hospital names in Chinese come from the official dataset, never from the model -------------------
+
+
+def test_tools_give_the_official_chinese_name_of_each_hospital(tmp_path):
+    import pandas as pd
+
+    from aecompass.agent.prompts import SYSTEM_PROMPT
+    from aecompass.agent.tools import Toolbox
+    from aecompass.ref import hospitals
+
+    cache = tmp_path / "hospitals.json"
+    cache.write_text(json.dumps({"features": [
+        {"attributes": {"hospName_EN": "Queen Elizabeth Hospital", "hospName_TC": "伊利沙伯醫院 ", "LATITUDE": 22.3, "LONGITUDE": 114.2}},
+        {"attributes": {"hospName_EN": "St. John Hospital", "hospName_TC": "長洲醫院", "LATITUDE": 22.2, "LONGITUDE": 114.0}}]}),
+        encoding="utf-8")
+    zh = hospitals.chinese_names(cache)
+    assert zh == {"Queen Elizabeth Hospital": "伊利沙伯醫院", "St John Hospital": "長洲醫院"}  # same keys as the wait-time feed
+
+    toolbox = Toolbox(None, None, hospitals.load(cache), None, zh_names=zh)
+    forecast = SimpleNamespace(now=60, pred=[61, 62, 63], lo=[40, 41, 42], hi=[80, 81, 82])
+    toolbox._forecasts = lambda target: (pd.Timestamp("2026-11-20 18:15", tz="Asia/Hong_Kong"), {"Queen Elizabeth Hospital": forecast})
+    assert toolbox.forecast_wait("queen elizabeth")["hospital_zh"] == "伊利沙伯醫院"
+    assert toolbox.get_current_waits()["waits_min"]["Queen Elizabeth Hospital"]["hospital_zh"] == "伊利沙伯醫院"
+    assert "hospital_zh" in SYSTEM_PROMPT and "Never translate a hospital's name" in SYSTEM_PROMPT
